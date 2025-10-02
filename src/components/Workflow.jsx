@@ -580,6 +580,9 @@ export default function Workflow({
                             <span className="text-red-600"> (Limits: {step.min} - {step.max})</span>
                           )}
                         </label>
+                        {currentUser.role !== "Operator" && (
+                          <p className="text-sm text-red-600 mb-2">Only Operators can input data</p>
+                        )}
                         <div className="flex space-x-3">
                           <input
                             type="number"
@@ -587,10 +590,13 @@ export default function Workflow({
                             className="border-2 px-4 py-3 rounded-lg flex-1 text-lg"
                             placeholder={`Enter ${step.param}`}
                             id={`input-${step.id}`}
-                            disabled={currentUser.role !== "Operator"}
                           />
                           <button
                             onClick={() => {
+                              if (currentUser.role !== "Operator") {
+                                alert("Only Operators can submit data");
+                                return;
+                              }
                               const input = document.getElementById(`input-${step.id}`);
                               const value = parseFloat(input.value);
                               if (!isNaN(value)) {
@@ -599,7 +605,6 @@ export default function Workflow({
                               }
                             }}
                             className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-semibold"
-                            disabled={currentUser.role !== "Operator"}
                           >
                             Submit & Sign
                           </button>
@@ -613,6 +618,9 @@ export default function Workflow({
                           Enter {step.param}
                           <span className="text-red-600"> (Critical Limits: {step.min} - {step.max})</span>
                         </label>
+                        {currentUser.role !== "Operator" && (
+                          <p className="text-sm text-red-600 mb-2">Only Operators can input data</p>
+                        )}
                         <div className="flex space-x-3">
                           <input
                             type="number"
@@ -620,10 +628,13 @@ export default function Workflow({
                             className="border-2 px-4 py-3 rounded-lg flex-1 text-lg"
                             placeholder={`Enter ${step.param}`}
                             id={`input-${step.id}`}
-                            disabled={currentUser.role !== "Operator"}
                           />
                           <button
                             onClick={() => {
+                              if (currentUser.role !== "Operator") {
+                                alert("Only Operators can submit data");
+                                return;
+                              }
                               const input = document.getElementById(`input-${step.id}`);
                               const value = parseFloat(input.value);
                               if (!isNaN(value)) {
@@ -632,14 +643,18 @@ export default function Workflow({
                               }
                             }}
                             className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-semibold"
-                            disabled={currentUser.role !== "Operator"}
                           >
                             Submit & Sign
                           </button>
                           <button
-                            onClick={() => autoCaptureData(step.id)}
+                            onClick={() => {
+                              if (currentUser.role !== "Operator") {
+                                alert("Only Operators can capture data");
+                                return;
+                              }
+                              autoCaptureData(step.id);
+                            }}
                             className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 font-semibold"
-                            disabled={currentUser.role !== "Operator"}
                           >
                             Auto Capture
                           </button>
