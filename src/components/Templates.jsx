@@ -1,27 +1,405 @@
-export default function Templates({ templates }) {
+import { useState } from "react";
+
+const Icons = {
+  Plus: () => <span>➕</span>,
+  Edit: () => <span>✏️</span>,
+  Save: () => <span>💾</span>,
+  Trash: () => <span>🗑️</span>,
+  Copy: () => <span>📄</span>,
+};
+
+export default function Templates({ templates, setTemplates }) {
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+
+  const addTemplate = () => {
+    setTemplates(prev => [...prev, {
+      id: Date.now(),
+      name: "New Template",
+      version: "0.1",
+      status: "draft",
+      createdDate: new Date().toISOString().split('T')[0],
+      bom: [],
+      steps: []
+    }]);
+  };
+
+  const cloneTemplate = (templateId) => {
+    const template = templates.find(t => t.id === templateId);
+    if (template) {
+      const newTemplate = {
+        ...template,
+        id: Date.now(),
+        name: template.name + " (Copy)",
+        version: "0.1",
+        status: "draft",
+        createdDate: new Date().toISOString().split('T')[0],
+        bom: template.bom ? [...template.bom.map(item => ({ ...item, id: Date.now() + Math.random() }))] : [],
+        steps: template.steps ? [...template.steps.map(step => ({ 
+          ...step, 
+          id: Date.now() + Math.random(), 
+          materials: step.materials ? [...step.materials.map(m => ({ ...m, id: Date.now() + Math.random() }))] : [] 
+        }))] : []
+      };
+      setTemplates(prev => [...prev, newTemplate]);
+    }
+  };
+
+  const createNewVersion = (templateId) => {
+    const template = templates.find(t => t.id === templateId);
+    if (template) {
+      const currentVersion = parseFloat(template.version);
+      const newVersion = (currentVersion + 0.1).toFixed(1);
+      const newTemplate = {
+        ...template,
+        id: Date.now(),
+        version: newVersion,
+        status: "draft",
+        createdDate: new Date().toISOString().split('T')[0],
+        bom: template.bom ? [...template.bom.map(item => ({ ...item, id: Date.now() + Math.random() }))] : [],
+        steps: template.steps ? [...template.steps.map(step => ({ 
+          ...step, 
+          id: Date.now() + Math.random(), 
+          materials: step.materials ? [...step.materials.map(m => ({ ...m, id: Date.now() + Math.random() }))] : [] 
+        }))] : []
+      };
+      setTemplates(prev => [...prev, newTemplate]);
+    }
+  };
+
+  const saveTemplate = (templateId) => {
+    setTemplates(prev => prev.map(t => 
+      t.id === templateId ? { ...t, lastSaved: new Date().toISOString() } : t
+    ));
+    alert('Template saved successfully!');
+  };
+
+  const updateTemplate = (templateId, field, value) => {
+    setTemplates(prev => prev.map(t => 
+      t.id === templateId ? { ...t, [field]: value } : t
+    ));
+  };
+
+  const addStep = (templateId) => {
+    setTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, steps: [...(t.steps || []), { 
+            id: Date.now(), 
+            name: "New Step", 
+            type: "instruction", 
+            param: "", 
+            min: null, 
+            max: null, 
+            materials: [], 
+            instruction: "" 
+          }] }
+        : t
+    ));
+  };
+
+  const updateStep = (templateId, stepId, field, value) => {
+    setTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, steps: (t.steps || []).map(s => s.id === stepId ? { ...s, [field]: value } : s) }
+        : t
+    ));
+  };
+
+  const removeStep = (templateId, stepId) => {
+    setTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, steps: (t.steps || []).filter(s => s.id !== stepId) }
+        : t
+    ));
+  };
+
+  const addMaterialToStep = (templateId, stepId) => {
+    setTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { 
+            ...t, 
+            steps: (t.steps || []).map(s => 
+              s.id === stepId 
+                ? { 
+                    ...s, 
+                    materials: [...(s.materials || []), { 
+                      id: Date.now(), 
+                      item: "New Material", 
+                      quantity: 0, 
+                      unit: "mg", 
+                      lotNumber: "" 
+                    }] 
+                  }
+                : s
+            )
+          }
+        : t
+    ));
+  };
+
+  const updateStepMaterial = (templateId, stepId, materialId, field, value) => {
+    setTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { 
+            ...t, 
+            steps: (t.steps || []).map(s => 
+              s.id === stepId 
+                ? { 
+                    ...s, 
+                    materials: (s.materials || []).map(m => 
+                      m.id === materialId ? { ...m, [field]: value } : m
+                    )
+                  }
+                : s
+            )
+          }
+        : t
+    ));
+  };
+
+  const removeMaterialFromStep = (templateId, stepId, materialId) => {
+    setTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { 
+            ...t, 
+            steps: (t.steps || []).map(s => 
+              s.id === stepId 
+                ? { 
+                    ...s, 
+                    materials: (s.materials || []).filter(m => m.id !== materialId)
+                  }
+                : s
+            )
+          }
+        : t
+    ));
+  };
+
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">eBR Templates 📋</h2>
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">eBR Templates 📋</h2>
+        <button 
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center space-x-2"
+          onClick={addTemplate}
+        >
+          <Icons.Plus />
+          <span>Add Template</span>
+        </button>
+      </div>
+
+      <div className="space-y-4">
         {templates.map(t => (
-          <div key={t.id} className="mb-4 p-4 border rounded">
-            <div className="flex justify-between items-start mb-2">
-              <div>
-                <h3 className="font-bold">{t.name}</h3>
-                <p className="text-sm text-gray-600">Version: {t.version} | Created: {t.createdDate}</p>
-              </div>
-              <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm">
-                {t.status}
-              </span>
-            </div>
-            <div className="mt-3">
-              <h4 className="font-semibold text-sm mb-2">Steps:</h4>
-              {t.steps.map(s => (
-                <div key={s.id} className="ml-4 mb-1 text-sm">
-                  {s.id}. {s.name} ({s.type})
+          <div key={t.id} className="border rounded-lg p-4 bg-white shadow">
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex-1">
+                <div className="flex items-center space-x-4 mb-2">
+                  <input
+                    className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none"
+                    value={t.name}
+                    onChange={(e) => updateTemplate(t.id, 'name', e.target.value)}
+                  />
+                  <input
+                    className="text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-16"
+                    value={t.version}
+                    onChange={(e) => updateTemplate(t.id, 'version', e.target.value)}
+                  />
                 </div>
-              ))}
+                <div className="flex items-center space-x-4 text-sm text-gray-600">
+                  <span>Created: {t.createdDate}</span>
+                  <select
+                    value={t.status}
+                    onChange={(e) => updateTemplate(t.id, 'status', e.target.value)}
+                    className="border rounded px-2 py-1"
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="review">Review</option>
+                    <option value="approved">Approved</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => saveTemplate(t.id)}
+                  className="p-2 text-green-600 hover:bg-green-100 rounded"
+                  title="Save Template"
+                >
+                  <Icons.Save />
+                </button>
+                <button
+                  onClick={() => createNewVersion(t.id)}
+                  className="p-2 text-purple-600 hover:bg-purple-100 rounded"
+                  title="Create New Version"
+                >
+                  📝
+                </button>
+                <button
+                  onClick={() => cloneTemplate(t.id)}
+                  className="p-2 text-blue-600 hover:bg-blue-100 rounded"
+                  title="Clone Template"
+                >
+                  <Icons.Copy />
+                </button>
+                <button
+                  onClick={() => setSelectedTemplate(selectedTemplate === t.id ? null : t.id)}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+                  title="Edit Template"
+                >
+                  <Icons.Edit />
+                </button>
+              </div>
             </div>
+
+            {selectedTemplate === t.id && (
+              <div className="border-t pt-4 space-y-4">
+                {/* Steps Section */}
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-md font-semibold">Process Steps (Bill of Process)</h4>
+                    <button
+                      onClick={() => addStep(t.id)}
+                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                    >
+                      Add Step
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {(t.steps || []).map((step, index) => (
+                      <div key={step.id} className="border rounded p-4 bg-gray-50">
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Step Name</label>
+                            <input
+                              className="w-full border px-2 py-1 rounded"
+                              value={step.name}
+                              onChange={(e) => updateStep(t.id, step.id, "name", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Type</label>
+                            <select
+                              className="w-full border px-2 py-1 rounded"
+                              value={step.type}
+                              onChange={(e) => updateStep(t.id, step.id, "type", e.target.value)}
+                            >
+                              <option value="instruction">Instruction</option>
+                              <option value="input">Data Input</option>
+                              <option value="control">Quality Control</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {(step.type === "input" || step.type === "control") && (
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Parameter</label>
+                              <input
+                                className="w-full border px-2 py-1 rounded"
+                                placeholder="Parameter name"
+                                value={step.param || ""}
+                                onChange={(e) => updateStep(t.id, step.id, "param", e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Min Value</label>
+                              <input
+                                type="number"
+                                className="w-full border px-2 py-1 rounded"
+                                value={step.min || ""}
+                                onChange={(e) => updateStep(t.id, step.id, "min", parseFloat(e.target.value))}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Max Value</label>
+                              <input
+                                type="number"
+                                className="w-full border px-2 py-1 rounded"
+                                value={step.max || ""}
+                                onChange={(e) => updateStep(t.id, step.id, "max", parseFloat(e.target.value))}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Instructions</label>
+                          <textarea
+                            className="w-full border px-2 py-1 rounded"
+                            rows="2"
+                            placeholder="Detailed instructions for this step..."
+                            value={step.instruction || ""}
+                            onChange={(e) => updateStep(t.id, step.id, "instruction", e.target.value)}
+                          />
+                        </div>
+
+                        {/* Materials for this step */}
+                        <div className="mb-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <label className="block text-xs text-gray-600">Materials Required</label>
+                            <button
+                              onClick={() => addMaterialToStep(t.id, step.id)}
+                              className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600"
+                            >
+                              Add Material
+                            </button>
+                          </div>
+                          {step.materials && step.materials.length > 0 && (
+                            <div className="space-y-2 bg-blue-50 p-2 rounded">
+                              {step.materials.map(material => (
+                                <div key={material.id} className="grid grid-cols-5 gap-2 items-center">
+                                  <input
+                                    className="border px-2 py-1 rounded text-xs"
+                                    placeholder="Material name"
+                                    value={material.item}
+                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'item', e.target.value)}
+                                  />
+                                  <input
+                                    type="number"
+                                    className="border px-2 py-1 rounded text-xs"
+                                    placeholder="Qty"
+                                    value={material.quantity}
+                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'quantity', e.target.value)}
+                                  />
+                                  <input
+                                    className="border px-2 py-1 rounded text-xs"
+                                    placeholder="Unit"
+                                    value={material.unit}
+                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'unit', e.target.value)}
+                                  />
+                                  <input
+                                    className="border px-2 py-1 rounded text-xs"
+                                    placeholder="Lot#"
+                                    value={material.lotNumber}
+                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'lotNumber', e.target.value)}
+                                  />
+                                  <button
+                                    onClick={() => removeMaterialFromStep(t.id, step.id, material.id)}
+                                    className="p-1 text-red-600 hover:bg-red-100 rounded text-xs"
+                                  >
+                                    <Icons.Trash />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <div className="text-xs text-gray-500">
+                            Step {index + 1} of {t.steps.length}
+                          </div>
+                          <button
+                            onClick={() => removeStep(t.id, step.id)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded"
+                          >
+                            <Icons.Trash />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
