@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Calendar, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Plus, Calendar, ChevronDown, ChevronUp, Trash2, Edit3, Save } from 'lucide-react';
 
 export default function Personnel({ 
   personnel,
@@ -12,6 +12,7 @@ export default function Personnel({
 }) {
   const [expandedPerson, setExpandedPerson] = useState(null);
   const [showAddUser, setShowAddUser] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   
   const t = (key) => {
     const translations = {
@@ -28,7 +29,9 @@ export default function Personnel({
         shiftPlanning: "Shift Planning",
         addShift: "Add Shift",
         cancel: "Cancel",
-        save: "Save"
+        save: "Save",
+        edit: "Edit",
+        selectStations: "Select Work Stations"
       },
       ru: {
         personnelManagement: "Управление персоналом и сменами",
@@ -43,11 +46,15 @@ export default function Personnel({
         shiftPlanning: "Планирование смен",
         addShift: "Добавить смену",
         cancel: "Отменить",
-        save: "Сохранить"
+        save: "Сохранить",
+        edit: "Редактировать",
+        selectStations: "Выбрать станции"
       }
     };
     return translations[language]?.[key] || translations['en'][key] || key;
   };
+
+  const [newUserStations, setNewUserStations] = useState([]);
 
   const addNewUser = (userData) => {
     const newUser = {
@@ -57,12 +64,20 @@ export default function Personnel({
       department: userData.department,
       status: "active",
       certifications: [],
-      allowedWorkStations: [],
+      allowedWorkStations: newUserStations,
       shifts: []
     };
     setPersonnel(prev => [...prev, newUser]);
     addAuditEntry("User Created", `New user ${userData.name} created with role ${userData.role}`);
     setShowAddUser(false);
+    setNewUserStations([]);
+  };
+
+  const updateUserStations = (userId, stationIds) => {
+    setPersonnel(prev => prev.map(p => 
+      p.id === userId ? {...p, allowedWorkStations: stationIds} : p
+    ));
+    addAuditEntry("User Modified", `Work stations updated for user`);
   };
 
   return (
@@ -122,13 +137,40 @@ export default function Personnel({
                 />
               </div>
             </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-semibold mb-2">{t('selectStations')}</label>
+              <div className="grid grid-cols-3 gap-2">
+                {workStations.map(ws => (
+                  <label key={ws.id} className="flex items-center space-x-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newUserStations.includes(ws.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewUserStations(prev => [...prev, ws.id]);
+                        } else {
+                          setNewUserStations(prev => prev.filter(id => id !== ws.id));
+                        }
+                      }}
+                      className="rounded"
+                    />
+                    <span>{ws.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            
             <div className="flex space-x-2">
               <button type="submit" className="btn-primary">
                 {t('save')}
               </button>
               <button 
                 type="button" 
-                onClick={() => setShowAddUser(false)}
+                onClick={() => {
+                  setShowAddUser(false);
+                  setNewUserStations([]);
+                }}
                 className="btn-secondary"
               >
                 {t('cancel')}
@@ -144,70 +186,98 @@ export default function Personnel({
           <table className="w-full">
             <thead className="bg-white/40">
               <tr className="border-b">
-                <th className="text-left py-3 px-4 font-semibold">{t('name')}</th>
-                <th className="text-left py-3 px-4 font-semibold">{t('role')}</th>
-                <th className="text-left py-3 px-4 font-semibold">{t('status')}</th>
-                <th className="text-left py-3 px-4 font-semibold">{t('details')}</th>
+                <th className="text-left py-2 px-3 font-semibold text-sm">{t('name')}</th>
+                <th className="text-left py-2 px-3 font-semibold text-sm">{t('role')}</th>
+                <th className="text-left py-2 px-3 font-semibold text-sm">{t('status')}</th>
+                <th className="text-left py-2 px-3 font-semibold text-sm">{t('details')}</th>
               </tr>
             </thead>
             <tbody>
               {personnel.map((p, idx) => (
                 <React.Fragment key={p.id}>
                   <tr className={`border-b hover:bg-white/40 transition-colors ${idx % 2 === 0 ? 'bg-white/20' : ''}`}>
-                    <td className="py-3 px-4 font-semibold">{p.name}</td>
-                    <td className="py-3 px-4 text-sm">{p.role}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-3 py-1 rounded text-xs font-semibold ${
+                    <td className="py-2 px-3 font-semibold text-sm">{p.name}</td>
+                    <td className="py-2 px-3 text-xs">{p.role}</td>
+                    <td className="py-2 px-3">
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
                         p.status === "active" ? "bg-green-100 text-green-800" :
                         "bg-gray-100 text-gray-800"
                       }`}>
                         {p.status}
                       </span>
                     </td>
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => setExpandedPerson(expandedPerson === p.id ? null : p.id)}
-                        className="p-1 hover:bg-gray-200 rounded"
-                      >
-                        {expandedPerson === p.id ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
-                        )}
-                      </button>
+                    <td className="py-2 px-3">
+                      <div className="flex space-x-1">
+                        <button
+                          onClick={() => setEditingUser(editingUser === p.id ? null : p.id)}
+                          className="p-1 hover:bg-gray-200 rounded"
+                        >
+                          {editingUser === p.id ? <Save className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => setExpandedPerson(expandedPerson === p.id ? null : p.id)}
+                          className="p-1 hover:bg-gray-200 rounded"
+                        >
+                          {expandedPerson === p.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                  {expandedPerson === p.id && (
+                  {(expandedPerson === p.id || editingUser === p.id) && (
                     <tr>
-                      <td colSpan="4" className="py-4 px-4 bg-white/60">
-                        <div className="space-y-3">
+                      <td colSpan="4" className="py-3 px-3 bg-white/60">
+                        <div className="space-y-2 text-sm">
                           <div>
                             <p className="text-xs font-semibold mb-1">{t('department')}:</p>
-                            <p className="text-sm">{p.department}</p>
+                            <p className="text-xs">{p.department}</p>
                           </div>
                           <div>
                             <p className="text-xs font-semibold mb-1">{t('certifications')}:</p>
                             <div className="flex flex-wrap gap-1">
                               {p.certifications.map((cert, idx) => (
-                                <span key={idx} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
+                                <span key={idx} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
                                   {cert}
                                 </span>
                               ))}
                             </div>
                           </div>
-                          <div>
-                            <p className="text-xs font-semibold mb-1">{t('allowedWorkStations')}:</p>
-                            <div className="flex flex-wrap gap-1">
-                              {p.allowedWorkStations?.map(wsId => {
-                                const ws = workStations.find(w => w.id === wsId);
-                                return ws ? (
-                                  <span key={wsId} className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-xs">
-                                    {ws.name}
-                                  </span>
-                                ) : null;
-                              })}
+                          {editingUser === p.id ? (
+                            <div>
+                              <p className="text-xs font-semibold mb-1">{t('allowedWorkStations')}:</p>
+                              <div className="grid grid-cols-2 gap-1">
+                                {workStations.map(ws => (
+                                  <label key={ws.id} className="flex items-center space-x-1 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={p.allowedWorkStations?.includes(ws.id)}
+                                      onChange={(e) => {
+                                        const newStations = e.target.checked
+                                          ? [...(p.allowedWorkStations || []), ws.id]
+                                          : (p.allowedWorkStations || []).filter(id => id !== ws.id);
+                                        updateUserStations(p.id, newStations);
+                                      }}
+                                      className="rounded"
+                                    />
+                                    <span>{ws.name}</span>
+                                  </label>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div>
+                              <p className="text-xs font-semibold mb-1">{t('allowedWorkStations')}:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {p.allowedWorkStations?.map(wsId => {
+                                  const ws = workStations.find(w => w.id === wsId);
+                                  return ws ? (
+                                    <span key={wsId} className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">
+                                      {ws.name}
+                                    </span>
+                                  ) : null;
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -225,7 +295,7 @@ export default function Personnel({
           </h3>
           
           <button
-            className="btn-secondary w-full mb-4 flex items-center justify-center space-x-2"
+            className="btn-secondary w-full mb-4 flex items-center justify-center space-x-2 text-sm py-2"
             onClick={() => {
               const newShift = {
                 id: Date.now(),
@@ -244,61 +314,50 @@ export default function Personnel({
             <span>{t('addShift')}</span>
           </button>
           
-          <div className="space-y-3 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto">
             {shifts.map(shift => (
-              <div key={shift.id} className="border rounded-lg p-3 bg-white/60">
+              <div key={shift.id} className="border rounded-lg p-2 bg-white/60">
                 <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                  <div>
-                    <label className="block text-xs font-semibold mb-1">Date</label>
-                    <input
-                      type="date"
-                      className="border rounded px-2 py-1 w-full text-xs"
-                      value={shift.date}
-                      onChange={(e) => {
-                        setShifts(prev => prev.map(s => 
-                          s.id === shift.id ? {...s, date: e.target.value} : s
-                        ));
-                        addAuditEntry("Shift Modified", `Shift date changed to ${e.target.value}`);
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1">Shift Type</label>
-                    <select
-                      className="border rounded px-2 py-1 w-full text-xs"
-                      value={shift.shiftType}
-                      onChange={(e) => {
-                        setShifts(prev => prev.map(s => 
-                          s.id === shift.id ? {...s, shiftType: e.target.value} : s
-                        ));
-                        addAuditEntry("Shift Modified", `Shift type changed to ${e.target.value}`);
-                      }}
-                    >
-                      <option value="Day Shift">Day Shift</option>
-                      <option value="Night Shift">Night Shift</option>
-                      <option value="Afternoon Shift">Afternoon Shift</option>
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="mb-2">
-                  <label className="block text-xs font-semibold mb-1">Work Station</label>
-                  <select
+                  <input
+                    type="date"
                     className="border rounded px-2 py-1 w-full text-xs"
-                    value={shift.workStationId || ""}
+                    value={shift.date}
                     onChange={(e) => {
                       setShifts(prev => prev.map(s => 
-                        s.id === shift.id ? {...s, workStationId: parseInt(e.target.value) || null} : s
+                        s.id === shift.id ? {...s, date: e.target.value} : s
                       ));
-                      addAuditEntry("Shift Modified", "Work station assigned to shift");
+                      addAuditEntry("Shift Modified", `Shift date changed to ${e.target.value}`);
+                    }}
+                  />
+                  <select
+                    className="border rounded px-2 py-1 w-full text-xs"
+                    value={shift.shiftType}
+                    onChange={(e) => {
+                      setShifts(prev => prev.map(s => 
+                        s.id === shift.id ? {...s, shiftType: e.target.value} : s
+                      ));
                     }}
                   >
-                    <option value="">Select Station</option>
-                    {workStations.map(ws => (
-                      <option key={ws.id} value={ws.id}>{ws.name}</option>
-                    ))}
+                    <option value="Day Shift">Day</option>
+                    <option value="Night Shift">Night</option>
+                    <option value="Afternoon Shift">Afternoon</option>
                   </select>
                 </div>
+                
+                <select
+                  className="border rounded px-2 py-1 w-full text-xs mb-2"
+                  value={shift.workStationId || ""}
+                  onChange={(e) => {
+                    setShifts(prev => prev.map(s => 
+                      s.id === shift.id ? {...s, workStationId: parseInt(e.target.value) || null} : s
+                    ));
+                  }}
+                >
+                  <option value="">Select Station</option>
+                  {workStations.map(ws => (
+                    <option key={ws.id} value={ws.id}>{ws.name}</option>
+                  ))}
+                </select>
                 
                 <div className="flex justify-between items-center pt-2 border-t">
                   <span className="text-xs text-gray-500">
@@ -311,7 +370,7 @@ export default function Personnel({
                     }}
                     className="text-red-600 hover:bg-red-100 p-1 rounded"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
               </div>

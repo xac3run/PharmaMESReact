@@ -99,6 +99,7 @@ export default function App() {
   // Check permissions
   const hasPermission = (permission) => {
     if (!currentUser) return false;
+    if (currentUser.role === 'Admin') return true; // Admin может все
     return rolePermissions[currentUser.role]?.[permission] || false;
   };
 
