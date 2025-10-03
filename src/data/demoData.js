@@ -1,177 +1,288 @@
-export const demoBatches = [
-  { id: "BR-2024-001", product: "Aspirin 325mg", status: "in_progress", progress: 65 },
-  { id: "BR-2024-002", product: "Paracetamol 500mg", status: "completed", progress: 100 },
-  { id: "BR-2024-003", product: "Ibuprofen 200mg", status: "deviation", progress: 45, deviation: "Temp exceeded" }
-];
-
-export const demoTemplates = [
+export const initialFormulas = [
   {
     id: 1,
-    name: "Aspirin 325mg - Tableting",
+    articleNumber: "ART-001",
+    productName: "Tablet A",
+    weightPerUnit: 500,
+    productType: "dosing",
+    status: "approved",
+    version: "1.0",
+    bom: [
+      { id: 1, materialArticle: "MAT-001", quantity: 250, unit: "mg" },
+      { id: 2, materialArticle: "MAT-002", quantity: 200, unit: "mg" },
+      { id: 3, materialArticle: "MAT-003", quantity: 50, unit: "mg" }
+    ]
+  }
+];
+
+export const initialMaterials = [
+  {
+    id: 1,
+    articleNumber: "MAT-001",
+    name: "API Powder Alpha",
+    status: "validated",
+    quantity: 50000,
+    unit: "g",
+    location: "Warehouse A-1",
+    expiryDate: "2026-12-31",
+    receivedDate: "2025-01-15",
+    supplier: "Supplier A",
+    lotNumber: "LOT-2025-001"
+  },
+  {
+    id: 2,
+    articleNumber: "MAT-002",
+    name: "Excipient Beta",
+    status: "quarantine",
+    quantity: 25000,
+    unit: "g",
+    location: "Quarantine Zone",
+    expiryDate: "2025-12-31",
+    receivedDate: "2025-10-01",
+    supplier: "Supplier B",
+    lotNumber: "LOT-2025-002"
+  },
+  {
+    id: 3,
+    articleNumber: "MAT-003",
+    name: "Lubricant Gamma",
+    status: "validated",
+    quantity: 10000,
+    unit: "g",
+    location: "Warehouse B-3",
+    expiryDate: "2026-06-30",
+    receivedDate: "2025-02-20",
+    supplier: "Supplier C",
+    lotNumber: "LOT-2025-003"
+  }
+];
+
+export const equipmentClasses = {
+  "Weighing": ["Precision Balance", "Analytical Balance", "Platform Scale"],
+  "Mixing": ["Planetary Mixer", "High Shear Mixer", "V-Blender"],
+  "Granulation": ["Wet Granulator", "Dry Granulator", "Fluid Bed"],
+  "Coating": ["Pan Coater", "Fluid Bed Coater"],
+  "Packaging": ["Blister Machine", "Bottle Filler", "Cartoner"]
+};
+
+export const initialEquipment = [
+  {
+    id: 1,
+    name: "Balance-01",
+    class: "Weighing",
+    subclass: "Precision Balance",
+    status: "operational",
+    currentBatch: null,
+    lastBatch: null,
+    location: "Room 101",
+    globalParameters: { 
+      maxCapacity: 5000, 
+      precision: 0.01,
+      unit: "g",
+      calibrationDue: "2025-11-01"
+    }
+  },
+  {
+    id: 2,
+    name: "Mixer-01",
+    class: "Mixing",
+    subclass: "Planetary Mixer",
+    status: "operational",
+    currentBatch: null,
+    lastBatch: null,
+    location: "Room 102",
+    globalParameters: { 
+      volume: 50, 
+      rpmRange: [10, 200],
+      temperature: [15, 25],
+      unit: "L"
+    }
+  },
+  {
+    id: 3,
+    name: "Granulator-01",
+    class: "Granulation",
+    subclass: "Wet Granulator",
+    status: "maintenance",
+    currentBatch: null,
+    lastBatch: "B-2025-099",
+    location: "Room 103",
+    globalParameters: {
+      capacity: 100,
+      rpmRange: [50, 300],
+      unit: "kg"
+    }
+  }
+];
+
+export const initialWorkStations = [
+  { 
+    id: 1, 
+    name: "Dispensing Station 1", 
+    processes: ["dispensing", "weighing"], 
+    equipmentIds: [1],
+    location: "Room 101"
+  },
+  { 
+    id: 2, 
+    name: "Mixing Station 1", 
+    processes: ["mixing"], 
+    equipmentIds: [2],
+    location: "Room 102"
+  },
+  {
+    id: 3,
+    name: "Granulation Station 1",
+    processes: ["granulation"],
+    equipmentIds: [3],
+    location: "Room 103"
+  }
+];
+
+export const initialWorkflows = [
+  {
+    id: 1,
+    name: "Standard Tablet Production",
+    formulaId: 1,
     version: "1.0",
     status: "approved",
-    createdDate: "2024-01-01",
-    bom: [
-      { id: 1, item: "Aspirin API", quantity: 325, unit: "mg", lotNumber: "ASP-240101" },
-      { id: 2, item: "Microcrystalline Cellulose", quantity: 100, unit: "mg", lotNumber: "MCC-240102" }
-    ],
+    createdDate: "2025-09-01",
     steps: [
       {
         id: 1,
-        name: "Weighing",
-        type: "input",
-        param: "Weight",
-        min: 320,
-        max: 330,
-        instruction: "Weigh raw materials accurately using calibrated scale",
-        materials: [
-          { id: 1, item: "Aspirin API", quantity: 325, unit: "mg", lotNumber: "ASP-240101" },
-          { id: 2, item: "Microcrystalline Cellulose", quantity: 100, unit: "mg", lotNumber: "MCC-240102" }
-        ]
+        name: "Dispense API",
+        type: "dispensing",
+        formulaBomId: 1,
+        equipmentId: 1,
+        workStationId: 1,
+        requiresQC: false,
+        instruction: "Dispense API according to formula",
+        stepParameters: {
+          targetWeight: 250,
+          tolerance: 2,
+          unit: "mg"
+        }
       },
       {
         id: 2,
-        name: "Blending",
-        type: "instruction",
-        instruction: "Blend materials for 15 minutes at medium speed",
-        materials: []
+        name: "Dispense Excipient",
+        type: "dispensing",
+        formulaBomId: 2,
+        equipmentId: 1,
+        workStationId: 1,
+        requiresQC: false,
+        instruction: "Dispense Excipient according to formula",
+        stepParameters: {
+          targetWeight: 200,
+          tolerance: 2,
+          unit: "mg"
+        }
       },
       {
         id: 3,
-        name: "Compression",
-        type: "input",
-        param: "Pressure",
-        min: 800,
-        max: 1200,
-        instruction: "Compress tablets using tablet press at specified pressure",
-        materials: []
+        name: "QC - Weight Check",
+        type: "qc",
+        equipmentId: 1,
+        workStationId: 1,
+        requiresQC: true,
+        instruction: "Verify total weight of dispensed materials",
+        qcParameters: {
+          parameter: "Total Weight",
+          min: 445,
+          max: 455,
+          unit: "mg"
+        }
       },
       {
         id: 4,
-        name: "Visual QC",
-        type: "control",
-        param: "Defects",
-        min: 0,
-        max: 5,
-        instruction: "Check for visual defects in sample of 100 tablets",
-        materials: []
-      }
-    ]
-  },
-  {
-    id: 2,
-    name: "Paracetamol 500mg - Coating",
-    version: "1.1",
-    status: "draft",
-    createdDate: "2024-01-05",
-    bom: [
-      { id: 1, item: "Paracetamol API", quantity: 500, unit: "mg", lotNumber: "PAR-240103" },
-      { id: 2, item: "Coating Solution", quantity: 50, unit: "ml", lotNumber: "COAT-240104" }
-    ],
-    steps: [
-      {
-        id: 1,
-        name: "Core Preparation",
-        type: "instruction",
-        instruction: "Prepare tablet cores according to standard procedure",
-        materials: [
-          { id: 1, item: "Paracetamol API", quantity: 500, unit: "mg", lotNumber: "PAR-240103" }
-        ]
+        name: "Mixing",
+        type: "process",
+        equipmentId: 2,
+        workStationId: 2,
+        requiresQC: false,
+        instruction: "Mix for 30 minutes at specified RPM",
+        stepParameters: {
+          duration: 30,
+          rpm: 60,
+          temperature: 20
+        }
       },
       {
-        id: 2,
-        name: "Coating",
-        type: "input",
-        param: "Thickness",
-        min: 50,
-        max: 100,
-        unit: "μm",
-        instruction: "Apply coating solution until desired thickness",
-        materials: [
-          { id: 2, item: "Coating Solution", quantity: 50, unit: "ml", lotNumber: "COAT-240104" }
-        ]
+        id: 5,
+        name: "QC - Homogeneity Test",
+        type: "qc",
+        equipmentId: null,
+        workStationId: 2,
+        requiresQC: true,
+        instruction: "Test mixture homogeneity",
+        qcParameters: {
+          parameter: "Homogeneity",
+          min: 95,
+          max: 100,
+          unit: "%"
+        }
       }
     ]
   }
 ];
 
-export const demoEquipment = [
+export const initialPersonnel = [
   {
     id: 1,
-    name: "Tablet Press #1",
-    type: "Compression",
-    status: "in_operation",
-    location: "Production Hall A",
-    lastCalibration: "2024-01-01",
-    nextCalibration: "2024-04-01"
-  },
-  {
-    id: 2,
-    name: "Coating Pan #2",
-    type: "Coating",
-    status: "cleaning",
-    location: "Production Hall B",
-    lastCalibration: "2024-01-10",
-    nextCalibration: "2024-04-10"
-  },
-  {
-    id: 3,
-    name: "Blender #3",
-    type: "Mixing",
-    status: "calibration",
-    location: "Production Hall A",
-    lastCalibration: "2024-01-15",
-    nextCalibration: "2024-04-15"
-  }
-];
-
-export const demoPersonnel = [
-  {
-    id: 1,
-    name: "John Doe",
+    name: "John Operator",
     role: "Operator",
     department: "Production",
     status: "active",
-    lastTraining: "2024-01-01",
-    certifications: ["GMP Basic", "Equipment Operation", "Safety Training"]
+    certifications: ["GMP Basic", "Weighing Operations"],
+    allowedWorkStations: [1, 2],
+    shifts: []
   },
   {
     id: 2,
-    name: "Jane Smith",
+    name: "Anna QA",
     role: "QA",
     department: "Quality",
     status: "active",
-    lastTraining: "2024-01-05",
-    certifications: ["QC Methods", "HPLC Operation", "GMP Advanced"]
-  },
-  {
-    id: 3,
-    name: "Mike Johnson",
-    role: "Supervisor",
-    department: "Production",
-    status: "training",
-    lastTraining: "2024-01-20",
-    certifications: ["Leadership", "GMP Advanced", "Process Management"]
+    certifications: ["GMP Advanced", "QC Methods"],
+    allowedWorkStations: [1, 2, 3],
+    shifts: []
   }
 ];
 
-export const demoDeviations = [
+export const initialBatches = [
+  {
+    id: "B-2025-001",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 1000,
+    status: "ready",
+    progress: 0,
+    currentStep: null,
+    currentStepIndex: 0,
+    history: [],
+    materialConsumption: [],
+    createdDate: "2025-10-03",
+    createdBy: "System"
+  }
+];
+
+export const initialShifts = [
   {
     id: 1,
-    batchId: "BR-2024-003",
-    description: "Temperature exceeded limits during compression",
-    status: "pending",
-    reportedBy: "Mike Johnson",
-    reportedDate: "2024-01-20",
-    investigator: null
+    date: "2025-10-03",
+    shiftType: "Day Shift",
+    startTime: "08:00",
+    endTime: "16:00",
+    assignedPersonnel: [1],
+    workStationId: 1
   },
   {
     id: 2,
-    batchId: "BR-2024-001",
-    description: "Minor weight variance detected",
-    status: "approved",
-    reportedBy: "John Doe",
-    reportedDate: "2024-01-18",
-    investigator: "Jane Smith"
+    date: "2025-10-03",
+    shiftType: "Day Shift",
+    startTime: "08:00",
+    endTime: "16:00",
+    assignedPersonnel: [2],
+    workStationId: 2
   }
 ];
