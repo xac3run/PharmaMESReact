@@ -6,9 +6,9 @@ services:
     container_name: nobilis_postgres
     restart: always
     environment:
-      POSTGRES_DB: nobilis_mes
-      POSTGRES_USER: nobilis_user
-      POSTGRES_PASSWORD: nobilis_password_change_me
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
@@ -18,7 +18,7 @@ services:
     networks:
       - nobilis_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nobilis_user -d nobilis_mes"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,18 +32,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      NODE_ENV: development
-      PORT: 3001
-      API_PREFIX: api
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: nobilis_mes
-      DATABASE_USER: nobilis_user
-      DATABASE_PASSWORD: nobilis_password_change_me
-      JWT_SECRET: your_jwt_secret_key_change_this_in_production
-      JWT_EXPIRATION: 24h
-      CORS_ORIGIN: "*"
+    env_file:
+      - .env
     ports:
       - "3001:3001"
     volumes:
