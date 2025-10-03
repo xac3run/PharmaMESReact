@@ -25,7 +25,8 @@ import {
   initialEquipment,
   initialWorkStations,
   initialPersonnel,
-  initialShifts
+  initialShifts,
+  rolePermissions as initialRolePermissions
 } from "./data/demoData";
 
 export default function App() {
@@ -43,11 +44,63 @@ export default function App() {
   const [personnel, setPersonnel] = useState(initialPersonnel);
   const [shifts, setShifts] = useState(initialShifts);
   const [auditTrail, setAuditTrail] = useState([]);
+  const [rolePermissions, setRolePermissions] = useState(initialRolePermissions);
   
   // UI state
   const [expandedBatch, setExpandedBatch] = useState(null);
   const [editingFormula, setEditingFormula] = useState(null);
   const [selectedEquipmentClass, setSelectedEquipmentClass] = useState("Weighing");
+
+  // Translation helper
+  const t = (key) => {
+    const translations = {
+      en: {
+        dashboard: "Dashboard",
+        batches: "Batches",
+        formulas: "Formulas",
+        workflows: "Workflows",
+        materials: "Materials",
+        equipment: "Equipment",
+        stations: "Work Stations",
+        personnel: "Personnel",
+        audit: "Audit Trail",
+        settings: "Settings",
+        logout: "Logout",
+        login: "Login",
+        welcome: "Nobilis.Tech MES",
+        subtitle: "Manufacturing Execution System",
+        loginInstructions: "Demo Login Instructions:",
+        enterUsername: "Enter any username (e.g., 'John Operator')",
+        chooseRole: "Choose role: Operator, QA, Master, Planner, or Admin"
+      },
+      ru: {
+        dashboard: "Панель",
+        batches: "Партии",
+        formulas: "Формулы",
+        workflows: "Процессы",
+        materials: "Материалы",
+        equipment: "Оборудование",
+        stations: "Станции",
+        personnel: "Персонал",
+        audit: "Аудит",
+        settings: "Настройки",
+        logout: "Выход",
+        login: "Вход",
+        welcome: "Nobilis.Tech MES",
+        subtitle: "Система управления производством",
+        loginInstructions: "Инструкции для входа:",
+        enterUsername: "Введите имя пользователя (например 'John Operator')",
+        chooseRole: "Выберите роль: Operator, QA, Master, Planner или Admin"
+      }
+    };
+    return translations[language]?.[key] || translations['en'][key] || key;
+  };
+
+  // Check permissions
+  const hasPermission = (permission) => {
+    if (!currentUser) return false;
+    return rolePermissions[currentUser.role]?.[permission] || false;
+  };
 
   // Audit trail helper
   const addAuditEntry = (action, details, batchId = null) => {
@@ -65,12 +118,13 @@ export default function App() {
   // Login/Logout handlers
   const handleLogin = () => {
     const username = prompt("Enter username:");
-    const role = prompt("Enter role (Operator/QA/Master/Planner):");
+    const role = prompt("Enter role (Operator/QA/Master/Planner/Admin):");
     if (username && role) {
-      const user = personnel.find(p => p.name === username) || { 
+      const existingUser = personnel.find(p => p.name === username);
+      const user = existingUser || { 
         name: username, 
         role: role,
-        allowedWorkStations: role === "Master" ? [1, 2, 3] : []
+        allowedWorkStations: rolePermissions[role]?.allWorkStations ? [1, 2, 3] : []
       };
       setCurrentUser(user);
       addAuditEntry("User Login", `${username} logged in as ${role}`);
@@ -86,6 +140,11 @@ export default function App() {
 
   // Batch operations
   const startBatchProduction = (batchId, targetQty) => {
+    if (!hasPermission('canStartBatch')) {
+      alert("You don't have permission to start batches");
+      return;
+    }
+    
     const batch = batches.find(b => b.id === batchId);
     const workflow = workflows.find(w => w.id === batch.workflowId);
     
@@ -106,6 +165,11 @@ export default function App() {
   };
 
   const executeStep = (batchId, stepId, value, lotNumber = null) => {
+    if (!hasPermission('canExecuteSteps')) {
+      alert("You don't have permission to execute steps");
+      return;
+    }
+    
     const batch = batches.find(b => b.id === batchId);
     const workflow = workflows.find(w => w.id === batch.workflowId);
     const step = workflow.steps.find(s => s.id === stepId);
@@ -125,7 +189,7 @@ export default function App() {
     if (step.formulaBomId && step.type === "dispensing") {
       const formula = formulas.find(f => f.id === batch.formulaId);
       const bomItem = formula.bom.find(b => b.id === step.formulaBomId);
-      const consumedQty = bomItem.quantity * batch.targetQuantity / 1000; // Convert to grams
+      const consumedQty = bomItem.quantity * batch.targetQuantity / 1000;
       
       materialConsumption.push({
         stepId,
@@ -136,16 +200,15 @@ export default function App() {
         timestamp: new Date().toISOString()
       });
 
-      // Update material stock
       setMaterials(prev => prev.map(m => {
         if (m.articleNumber === bomItem.materialArticle) {
+          addAuditEntry("Material Consumed", `${m.articleNumber}: ${consumedQty}g consumed from stock`);
           return { ...m, quantity: m.quantity - consumedQty };
         }
         return m;
       }));
     }
 
-    // Update batch
     setBatches(prev => prev.map(b => {
       if (b.id === batchId) {
         const newHistory = [...b.history, {
@@ -184,6 +247,11 @@ export default function App() {
 
   // Material operations
   const addNewMaterial = () => {
+    if (!hasPermission('canManageMaterials')) {
+      alert("You don't have permission to manage materials");
+      return;
+    }
+    
     const newMaterial = {
       id: Date.now(),
       articleNumber: `MAT-${String(materials.length + 1).padStart(3, '0')}`,
@@ -202,6 +270,11 @@ export default function App() {
   };
 
   const updateMaterialStatus = (id, status) => {
+    if (!hasPermission('canValidateMaterials') && status === "validated") {
+      alert("You don't have permission to validate materials");
+      return;
+    }
+    
     setMaterials(prev => prev.map(m => 
       m.id === id ? { ...m, status } : m
     ));
@@ -211,6 +284,11 @@ export default function App() {
 
   // Export batch PDF
   const exportBatchPDF = (batchId, reportType) => {
+    if (!hasPermission('canExportReports')) {
+      alert("You don't have permission to export reports");
+      return;
+    }
+    
     const batch = batches.find(b => b.id === batchId);
     const formula = formulas.find(f => f.id === batch.formulaId);
     const workflow = workflows.find(w => w.id === batch.workflowId);
@@ -261,16 +339,16 @@ export default function App() {
           <div className="w-20 h-20 bg-gradient-to-br from-teal-600 to-teal-800 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
             <span className="text-white font-bold text-4xl">N</span>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900">Nobilis.Tech MES</h1>
-          <p className="text-gray-600">Manufacturing Execution System</p>
+          <h1 className="text-4xl font-bold text-gray-900">{t('welcome')}</h1>
+          <p className="text-gray-600">{t('subtitle')}</p>
           <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded">
-            <p className="font-semibold mb-1">Demo Login Instructions:</p>
-            <p>Enter any username (e.g., "John Operator")</p>
-            <p>Choose role: Operator, QA, Master, or Planner</p>
+            <p className="font-semibold mb-1">{t('loginInstructions')}</p>
+            <p>{t('enterUsername')}</p>
+            <p>{t('chooseRole')}</p>
           </div>
           <button onClick={handleLogin} className="btn-primary w-full flex items-center justify-center space-x-2">
             <LogIn className="w-5 h-5" />
-            <span>Login</span>
+            <span>{t('login')}</span>
           </button>
         </div>
       </div>
@@ -285,7 +363,7 @@ export default function App() {
           <div className="w-10 h-10 bg-gradient-to-br from-teal-600 to-teal-800 rounded-lg flex items-center justify-center mr-3 shadow-lg">
             <span className="text-white font-bold text-xl">N</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Nobilis.Tech MES</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{t('welcome')}</h1>
         </div>
         <div className="flex items-center space-x-4">
           <div className="text-sm text-gray-700 text-right">
@@ -294,23 +372,23 @@ export default function App() {
           </div>
           <button onClick={handleLogout} className="btn-secondary flex items-center space-x-2">
             <LogOut className="w-4 h-4" />
-            <span>Logout</span>
+            <span>{t('logout')}</span>
           </button>
         </div>
       </header>
 
       <nav className="flex space-x-2 border-b pb-2 mb-6 overflow-x-auto">
         {[
-          { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-          { id: "batches", label: "Batches", icon: Beaker },
-          { id: "formulas", label: "Formulas", icon: FileText },
-          { id: "workflows", label: "Workflows", icon: GitBranch },
-          { id: "materials", label: "Materials", icon: Package },
-          { id: "equipment", label: "Equipment", icon: Wrench },
-          { id: "stations", label: "Work Stations", icon: Monitor },
-          { id: "personnel", label: "Personnel", icon: Users },
-          { id: "audit", label: "Audit Trail", icon: Clipboard },
-          { id: "settings", label: "Settings", icon: Settings }
+          { id: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
+          { id: "batches", label: t("batches"), icon: Beaker },
+          { id: "formulas", label: t("formulas"), icon: FileText },
+          { id: "workflows", label: t("workflows"), icon: GitBranch },
+          { id: "materials", label: t("materials"), icon: Package },
+          { id: "equipment", label: t("equipment"), icon: Wrench },
+          { id: "stations", label: t("stations"), icon: Monitor },
+          { id: "personnel", label: t("personnel"), icon: Users },
+          { id: "audit", label: t("audit"), icon: Clipboard },
+          { id: "settings", label: t("settings"), icon: Settings }
         ].map(tab => (
           <button 
             key={tab.id}
@@ -359,6 +437,7 @@ export default function App() {
             materials={materials}
             editingFormula={editingFormula}
             setEditingFormula={setEditingFormula}
+            addAuditEntry={addAuditEntry}
           />
         )}
 
@@ -369,6 +448,7 @@ export default function App() {
             formulas={formulas}
             equipment={equipment}
             workStations={workStations}
+            addAuditEntry={addAuditEntry}
           />
         )}
 
@@ -378,6 +458,7 @@ export default function App() {
             setMaterials={setMaterials}
             addNewMaterial={addNewMaterial}
             updateMaterialStatus={updateMaterialStatus}
+            language={language}
           />
         )}
 
@@ -386,6 +467,7 @@ export default function App() {
             equipment={equipment}
             selectedEquipmentClass={selectedEquipmentClass}
             setSelectedEquipmentClass={setSelectedEquipmentClass}
+            language={language}
           />
         )}
 
@@ -394,23 +476,33 @@ export default function App() {
             workStations={workStations}
             setWorkStations={setWorkStations}
             equipment={equipment}
+            language={language}
           />
         )}
 
         {activeTab === "personnel" && (
           <Personnel
             personnel={personnel}
+            setPersonnel={setPersonnel}
             workStations={workStations}
             shifts={shifts}
             setShifts={setShifts}
+            addAuditEntry={addAuditEntry}
+            language={language}
           />
         )}
 
-        {activeTab === "audit" && (
+        {activeTab === "audit" && hasPermission('canViewAudit') && (
           <AuditTrail
             auditTrail={auditTrail}
             batches={batches}
           />
+        )}
+        
+        {activeTab === "audit" && !hasPermission('canViewAudit') && (
+          <div className="glass-card text-center py-16">
+            <p className="text-xl text-gray-600">You don't have permission to view audit trail</p>
+          </div>
         )}
 
         {activeTab === "settings" && (
@@ -419,6 +511,8 @@ export default function App() {
             setLanguage={setLanguage}
             currentUser={currentUser}
             addAuditEntry={addAuditEntry}
+            rolePermissions={rolePermissions}
+            setRolePermissions={setRolePermissions}
           />
         )}
       </div>

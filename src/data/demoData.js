@@ -1,3 +1,102 @@
+// Role Permissions
+export const rolePermissions = {
+  "Admin": {
+    canCreateBatch: true,
+    canStartBatch: true,
+    canExecuteSteps: true,
+    canApproveFormulas: true,
+    canCreateFormulas: true,
+    canCreateWorkflows: true,
+    canApproveWorkflows: true,
+    canManageMaterials: true,
+    canValidateMaterials: true,
+    canManageEquipment: true,
+    canManageWorkStations: true,
+    canManagePersonnel: true,
+    canCreateUsers: true,
+    canViewAudit: true,
+    canExportReports: true,
+    canManageRoles: true,
+    allWorkStations: true
+  },
+  "Master": {
+    canCreateBatch: false,
+    canStartBatch: false,
+    canExecuteSteps: true,
+    canApproveFormulas: true,
+    canCreateFormulas: true,
+    canCreateWorkflows: true,
+    canApproveWorkflows: true,
+    canManageMaterials: false,
+    canValidateMaterials: false,
+    canManageEquipment: false,
+    canManageWorkStations: false,
+    canManagePersonnel: false,
+    canCreateUsers: false,
+    canViewAudit: true,
+    canExportReports: true,
+    canManageRoles: false,
+    allWorkStations: true
+  },
+  "Planner": {
+    canCreateBatch: true,
+    canStartBatch: true,
+    canExecuteSteps: false,
+    canApproveFormulas: false,
+    canCreateFormulas: false,
+    canCreateWorkflows: false,
+    canApproveWorkflows: false,
+    canManageMaterials: false,
+    canValidateMaterials: false,
+    canManageEquipment: false,
+    canManageWorkStations: false,
+    canManagePersonnel: false,
+    canCreateUsers: false,
+    canViewAudit: true,
+    canExportReports: true,
+    canManageRoles: false,
+    allWorkStations: false
+  },
+  "QA": {
+    canCreateBatch: false,
+    canStartBatch: false,
+    canExecuteSteps: true,
+    canApproveFormulas: true,
+    canCreateFormulas: false,
+    canCreateWorkflows: false,
+    canApproveWorkflows: true,
+    canManageMaterials: true,
+    canValidateMaterials: true,
+    canManageEquipment: false,
+    canManageWorkStations: false,
+    canManagePersonnel: false,
+    canCreateUsers: false,
+    canViewAudit: true,
+    canExportReports: true,
+    canManageRoles: false,
+    allWorkStations: true
+  },
+  "Operator": {
+    canCreateBatch: false,
+    canStartBatch: false,
+    canExecuteSteps: true,
+    canApproveFormulas: false,
+    canCreateFormulas: false,
+    canCreateWorkflows: false,
+    canApproveWorkflows: false,
+    canManageMaterials: false,
+    canValidateMaterials: false,
+    canManageEquipment: false,
+    canManageWorkStations: false,
+    canManagePersonnel: false,
+    canCreateUsers: false,
+    canViewAudit: false,
+    canExportReports: false,
+    canManageRoles: false,
+    allWorkStations: false
+  }
+};
+
 export const initialFormulas = [
   {
     id: 1,
@@ -8,9 +107,9 @@ export const initialFormulas = [
     status: "approved",
     version: "1.0",
     bom: [
-      { id: 1, materialArticle: "MAT-001", quantity: 250, unit: "mg" },
-      { id: 2, materialArticle: "MAT-002", quantity: 200, unit: "mg" },
-      { id: 3, materialArticle: "MAT-003", quantity: 50, unit: "mg" }
+      { id: 1, materialArticle: "MAT-001", quantity: 250, unit: "mg", min: 245, max: 255, type: "raw_material" },
+      { id: 2, materialArticle: "MAT-002", quantity: 200, unit: "mg", min: 195, max: 205, type: "raw_material" },
+      { id: 3, materialArticle: "MAT-003", quantity: 50, unit: "mg", min: 48, max: 52, type: "raw_material" }
     ]
   }
 ];
@@ -227,6 +326,16 @@ export const initialWorkflows = [
 ];
 
 export const initialPersonnel = [
+  {
+    id: 0,
+    name: "System Admin",
+    role: "Admin",
+    department: "IT",
+    status: "active",
+    certifications: ["System Administrator", "GMP Advanced"],
+    allowedWorkStations: [1, 2, 3],
+    shifts: []
+  },
   {
     id: 1,
     name: "John Operator",

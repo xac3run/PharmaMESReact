@@ -1,13 +1,16 @@
 import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Save, CheckCircle } from 'lucide-react';
 
 export default function Workflows({ 
   workflows, 
   setWorkflows, 
   formulas,
   equipment,
-  workStations
+  workStations,
+  addAuditEntry
 }) {
+  
+  const [editingWorkflow, setEditingWorkflow] = React.useState(null);
   
   const addNewWorkflow = () => {
     const newWorkflow = {
@@ -20,6 +23,8 @@ export default function Workflows({
       steps: []
     };
     setWorkflows(prev => [...prev, newWorkflow]);
+    setEditingWorkflow(newWorkflow.id);
+    addAuditEntry("Workflow Created", `New workflow created`);
   };
 
   const addWorkflowStep = (workflowId) => {
@@ -41,6 +46,7 @@ export default function Workflows({
         ? { ...w, steps: [...w.steps, newStep] }
         : w
     ));
+    addAuditEntry("Workflow Modified", `Step added to workflow`);
   };
 
   return (
@@ -58,274 +64,348 @@ export default function Workflows({
       
       {workflows.map(wf => {
         const selectedFormula = formulas.find(f => f.id === wf.formulaId);
+        const isEditing = editingWorkflow === wf.id;
         
         return (
           <div key={wf.id} className="glass-card">
             <div className="flex justify-between items-start mb-4">
               <div className="flex-1">
                 <div className="flex items-center space-x-3 mb-2">
-                  <input
-                    className="text-xl font-bold bg-transparent border-b border-gray-300 focus:border-blue-600 px-2 py-1"
-                    value={wf.name}
-                    onChange={(e) => setWorkflows(prev => prev.map(w => 
-                      w.id === wf.id ? {...w, name: e.target.value} : w
-                    ))}
-                  />
-                  <select
-                    className="border rounded px-3 py-2 text-sm"
-                    value={wf.formulaId || ""}
-                    onChange={(e) => setWorkflows(prev => prev.map(w => 
-                      w.id === wf.id ? {...w, formulaId: parseInt(e.target.value) || null} : w
-                    ))}
-                  >
-                    <option value="">Select Formula</option>
-                    {formulas.map(f => (
-                      <option key={f.id} value={f.id}>{f.productName}</option>
-                    ))}
-                  </select>
+                  {isEditing ? (
+                    <input
+                      className="text-xl font-bold bg-transparent border-b border-gray-300 focus:border-blue-600 px-2 py-1"
+                      value={wf.name}
+                      onChange={(e) => {
+                        setWorkflows(prev => prev.map(w => 
+                          w.id === wf.id ? {...w, name: e.target.value} : w
+                        ));
+                        addAuditEntry("Workflow Modified", `Workflow name changed to ${e.target.value}`);
+                      }}
+                    />
+                  ) : (
+                    <h3 className="text-xl font-bold">{wf.name}</h3>
+                  )}
+                  
+                  {isEditing && (
+                    <select
+                      className="border rounded px-3 py-2 text-sm"
+                      value={wf.formulaId || ""}
+                      onChange={(e) => {
+                        setWorkflows(prev => prev.map(w => 
+                          w.id === wf.id ? {...w, formulaId: parseInt(e.target.value) || null} : w
+                        ));
+                        addAuditEntry("Workflow Modified", `Formula linked to workflow`);
+                      }}
+                    >
+                      <option value="">Select Formula</option>
+                      {formulas.map(f => (
+                        <option key={f.id} value={f.id}>{f.productName}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <p className="text-sm text-gray-600">
                   Version: {wf.version} | Created: {wf.createdDate}
+                  {!isEditing && selectedFormula && ` | Formula: ${selectedFormula.productName}`}
                 </p>
               </div>
-              <select
-                className="border rounded px-3 py-2"
-                value={wf.status}
-                onChange={(e) => setWorkflows(prev => prev.map(w => 
-                  w.id === wf.id ? {...w, status: e.target.value} : w
-                ))}
-              >
-                <option value="draft">Draft</option>
-                <option value="review">Review</option>
-                <option value="approved">Approved</option>
-              </select>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <h4 className="font-semibold">Workflow Steps</h4>
-                <button
-                  onClick={() => addWorkflowStep(wf.id)}
-                  className="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+              <div className="flex items-center space-x-2">
+                <select
+                  className="border rounded px-3 py-2 text-sm"
+                  value={wf.status}
+                  onChange={(e) => {
+                    setWorkflows(prev => prev.map(w => 
+                      w.id === wf.id ? {...w, status: e.target.value} : w
+                    ));
+                    addAuditEntry("Workflow Status Changed", `Workflow status changed to ${e.target.value}`);
+                  }}
                 >
-                  + Add Step
+                  <option value="draft">Draft</option>
+                  <option value="review">Review</option>
+                  <option value="approved">Approved</option>
+                </select>
+                <button
+                  onClick={() => setEditingWorkflow(isEditing ? null : wf.id)}
+                  className="p-2 text-blue-600 hover:bg-blue-100 rounded"
+                >
+                  {isEditing ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
                 </button>
               </div>
-              
-              {wf.steps.map((step, idx) => (
-                <div key={step.id} className="border rounded-lg p-4 bg-white/60">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold mb-1">Step Name</label>
-                      <input
-                        className="border rounded px-3 py-2 w-full"
-                        value={step.name}
-                        onChange={(e) => setWorkflows(prev => prev.map(w => 
-                          w.id === wf.id 
-                            ? {
-                                ...w,
-                                steps: w.steps.map(s => 
-                                  s.id === step.id ? {...s, name: e.target.value} : s
-                                )
-                              }
-                            : w
-                        ))}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold mb-1">Type</label>
-                      <select
-                        className="border rounded px-3 py-2 w-full"
-                        value={step.type}
-                        onChange={(e) => setWorkflows(prev => prev.map(w => 
-                          w.id === wf.id 
-                            ? {
-                                ...w,
-                                steps: w.steps.map(s => 
-                                  s.id === step.id ? {...s, type: e.target.value} : s
-                                )
-                              }
-                            : w
-                        ))}
-                      >
-                        <option value="process">Process</option>
-                        <option value="dispensing">Dispensing</option>
-                        <option value="qc">QC Check</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold mb-1">Equipment</label>
-                      <select
-                        className="border rounded px-3 py-2 w-full"
-                        value={step.equipmentId || ""}
-                        onChange={(e) => setWorkflows(prev => prev.map(w => 
-                          w.id === wf.id 
-                            ? {
-                                ...w,
-                                steps: w.steps.map(s => 
-                                  s.id === step.id ? {...s, equipmentId: parseInt(e.target.value) || null} : s
-                                )
-                              }
-                            : w
-                        ))}
-                      >
-                        <option value="">None</option>
-                        {equipment.map(eq => (
-                          <option key={eq.id} value={eq.id}>{eq.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold mb-1">Work Station</label>
-                      <select
-                        className="border rounded px-3 py-2 w-full"
-                        value={step.workStationId || ""}
-                        onChange={(e) => setWorkflows(prev => prev.map(w => 
-                          w.id === wf.id 
-                            ? {
-                                ...w,
-                                steps: w.steps.map(s => 
-                                  s.id === step.id ? {...s, workStationId: parseInt(e.target.value) || null} : s
-                                )
-                              }
-                            : w
-                        ))}
-                      >
-                        <option value="">None</option>
-                        {workStations.map(ws => (
-                          <option key={ws.id} value={ws.id}>{ws.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    {step.type === "dispensing" && selectedFormula && (
+            </div>
+            
+            {isEditing && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-semibold">Workflow Steps</h4>
+                  <button
+                    onClick={() => addWorkflowStep(wf.id)}
+                    className="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                  >
+                    + Add Step
+                  </button>
+                </div>
+                
+                {wf.steps.map((step, idx) => (
+                  <div key={step.id} className="border rounded-lg p-4 bg-white/60">
+                    <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold mb-1">Formula Material</label>
+                        <label className="block text-xs font-semibold mb-1">Step Name</label>
+                        <input
+                          className="border rounded px-3 py-2 w-full"
+                          value={step.name}
+                          onChange={(e) => {
+                            setWorkflows(prev => prev.map(w => 
+                              w.id === wf.id 
+                                ? {
+                                    ...w,
+                                    steps: w.steps.map(s => 
+                                      s.id === step.id ? {...s, name: e.target.value} : s
+                                    )
+                                  }
+                                : w
+                            ));
+                            addAuditEntry("Workflow Modified", `Step name changed to ${e.target.value}`);
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1">Type</label>
                         <select
                           className="border rounded px-3 py-2 w-full"
-                          value={step.formulaBomId || ""}
-                          onChange={(e) => setWorkflows(prev => prev.map(w => 
-                            w.id === wf.id 
-                              ? {
-                                  ...w,
-                                  steps: w.steps.map(s => 
-                                    s.id === step.id ? {...s, formulaBomId: parseInt(e.target.value) || null} : s
-                                  )
-                                }
-                              : w
-                          ))}
+                          value={step.type}
+                          onChange={(e) => {
+                            setWorkflows(prev => prev.map(w => 
+                              w.id === wf.id 
+                                ? {
+                                    ...w,
+                                    steps: w.steps.map(s => 
+                                      s.id === step.id ? {...s, type: e.target.value} : s
+                                    )
+                                  }
+                                : w
+                            ));
+                            addAuditEntry("Workflow Modified", `Step type changed to ${e.target.value}`);
+                          }}
                         >
-                          <option value="">Select Material</option>
-                          {selectedFormula.bom.map(b => (
-                            <option key={b.id} value={b.id}>
-                              {b.materialArticle} ({b.quantity}{b.unit})
-                            </option>
+                          <option value="process">Process</option>
+                          <option value="dispensing">Dispensing</option>
+                          <option value="qc">QC Check</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1">Equipment</label>
+                        <select
+                          className="border rounded px-3 py-2 w-full"
+                          value={step.equipmentId || ""}
+                          onChange={(e) => {
+                            setWorkflows(prev => prev.map(w => 
+                              w.id === wf.id 
+                                ? {
+                                    ...w,
+                                    steps: w.steps.map(s => 
+                                      s.id === step.id ? {...s, equipmentId: parseInt(e.target.value) || null} : s
+                                    )
+                                  }
+                                : w
+                            ));
+                            addAuditEntry("Workflow Modified", `Equipment linked to step`);
+                          }}
+                        >
+                          <option value="">None</option>
+                          {equipment.map(eq => (
+                            <option key={eq.id} value={eq.id}>{eq.name}</option>
                           ))}
                         </select>
                       </div>
-                    )}
+                      <div>
+                        <label className="block text-xs font-semibold mb-1">Work Station</label>
+                        <select
+                          className="border rounded px-3 py-2 w-full"
+                          value={step.workStationId || ""}
+                          onChange={(e) => {
+                            setWorkflows(prev => prev.map(w => 
+                              w.id === wf.id 
+                                ? {
+                                    ...w,
+                                    steps: w.steps.map(s => 
+                                      s.id === step.id ? {...s, workStationId: parseInt(e.target.value) || null} : s
+                                    )
+                                  }
+                                : w
+                            ));
+                            addAuditEntry("Workflow Modified", `Work station linked to step`);
+                          }}
+                        >
+                          <option value="">None</option>
+                          {workStations.map(ws => (
+                            <option key={ws.id} value={ws.id}>{ws.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      {step.type === "dispensing" && selectedFormula && (
+                        <div>
+                          <label className="block text-xs font-semibold mb-1">Formula Material</label>
+                          <select
+                            className="border rounded px-3 py-2 w-full"
+                            value={step.formulaBomId || ""}
+                            onChange={(e) => {
+                              setWorkflows(prev => prev.map(w => 
+                                w.id === wf.id 
+                                  ? {
+                                      ...w,
+                                      steps: w.steps.map(s => 
+                                        s.id === step.id ? {...s, formulaBomId: parseInt(e.target.value) || null} : s
+                                      )
+                                    }
+                                  : w
+                              ));
+                              addAuditEntry("Workflow Modified", `Formula material linked to step`);
+                            }}
+                          >
+                            <option value="">Select Material</option>
+                            {selectedFormula.bom.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.materialArticle} ({b.quantity}{b.unit})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      
+                      {step.type === "qc" && (
+                        <>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1">QC Parameter</label>
+                            <input
+                              className="border rounded px-3 py-2 w-full"
+                              placeholder="e.g., Weight, pH"
+                              value={step.qcParameters?.parameter || ""}
+                              onChange={(e) => {
+                                setWorkflows(prev => prev.map(w => 
+                                  w.id === wf.id 
+                                    ? {
+                                        ...w,
+                                        steps: w.steps.map(s => 
+                                          s.id === step.id 
+                                            ? {...s, qcParameters: {...s.qcParameters, parameter: e.target.value}} 
+                                            : s
+                                        )
+                                      }
+                                    : w
+                                ));
+                                addAuditEntry("Workflow Modified", `QC parameter changed to ${e.target.value}`);
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1">Min Value</label>
+                            <input
+                              type="number"
+                              className="border rounded px-3 py-2 w-full"
+                              value={step.qcParameters?.min || ""}
+                              onChange={(e) => {
+                                setWorkflows(prev => prev.map(w => 
+                                  w.id === wf.id 
+                                    ? {
+                                        ...w,
+                                        steps: w.steps.map(s => 
+                                          s.id === step.id 
+                                            ? {...s, qcParameters: {...s.qcParameters, min: parseFloat(e.target.value)}} 
+                                            : s
+                                        )
+                                      }
+                                    : w
+                                ));
+                                addAuditEntry("Workflow Modified", `QC min value changed to ${e.target.value}`);
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1">Max Value</label>
+                            <input
+                              type="number"
+                              className="border rounded px-3 py-2 w-full"
+                              value={step.qcParameters?.max || ""}
+                              onChange={(e) => {
+                                setWorkflows(prev => prev.map(w => 
+                                  w.id === wf.id 
+                                    ? {
+                                        ...w,
+                                        steps: w.steps.map(s => 
+                                          s.id === step.id 
+                                            ? {...s, qcParameters: {...s.qcParameters, max: parseFloat(e.target.value)}} 
+                                            : s
+                                        )
+                                      }
+                                    : w
+                                ));
+                                addAuditEntry("Workflow Modified", `QC max value changed to ${e.target.value}`);
+                              }}
+                            />
+                          </div>
+                        </>
+                      )}
+                      
+                      <div className="col-span-3">
+                        <label className="block text-xs font-semibold mb-1">Instruction</label>
+                        <textarea
+                          className="border rounded px-3 py-2 w-full"
+                          rows="2"
+                          value={step.instruction}
+                          onChange={(e) => {
+                            setWorkflows(prev => prev.map(w => 
+                              w.id === wf.id 
+                                ? {
+                                    ...w,
+                                    steps: w.steps.map(s => 
+                                      s.id === step.id ? {...s, instruction: e.target.value} : s
+                                    )
+                                  }
+                                : w
+                            ));
+                            addAuditEntry("Workflow Modified", `Step instruction updated`);
+                          }}
+                        />
+                      </div>
+                    </div>
                     
-                    {step.type === "qc" && (
-                      <>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1">QC Parameter</label>
-                          <input
-                            className="border rounded px-3 py-2 w-full"
-                            placeholder="e.g., Weight, pH"
-                            value={step.qcParameters?.parameter || ""}
-                            onChange={(e) => setWorkflows(prev => prev.map(w => 
-                              w.id === wf.id 
-                                ? {
-                                    ...w,
-                                    steps: w.steps.map(s => 
-                                      s.id === step.id 
-                                        ? {...s, qcParameters: {...s.qcParameters, parameter: e.target.value}} 
-                                        : s
-                                    )
-                                  }
-                                : w
-                            ))}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1">Min Value</label>
-                          <input
-                            type="number"
-                            className="border rounded px-3 py-2 w-full"
-                            value={step.qcParameters?.min || ""}
-                            onChange={(e) => setWorkflows(prev => prev.map(w => 
-                              w.id === wf.id 
-                                ? {
-                                    ...w,
-                                    steps: w.steps.map(s => 
-                                      s.id === step.id 
-                                        ? {...s, qcParameters: {...s.qcParameters, min: parseFloat(e.target.value)}} 
-                                        : s
-                                    )
-                                  }
-                                : w
-                            ))}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1">Max Value</label>
-                          <input
-                            type="number"
-                            className="border rounded px-3 py-2 w-full"
-                            value={step.qcParameters?.max || ""}
-                            onChange={(e) => setWorkflows(prev => prev.map(w => 
-                              w.id === wf.id 
-                                ? {
-                                    ...w,
-                                    steps: w.steps.map(s => 
-                                      s.id === step.id 
-                                        ? {...s, qcParameters: {...s.qcParameters, max: parseFloat(e.target.value)}} 
-                                        : s
-                                    )
-                                  }
-                                : w
-                            ))}
-                          />
-                        </div>
-                      </>
-                    )}
-                    
-                    <div className="col-span-3">
-                      <label className="block text-xs font-semibold mb-1">Instruction</label>
-                      <textarea
-                        className="border rounded px-3 py-2 w-full"
-                        rows="2"
-                        value={step.instruction}
-                        onChange={(e) => setWorkflows(prev => prev.map(w => 
-                          w.id === wf.id 
-                            ? {
-                                ...w,
-                                steps: w.steps.map(s => 
-                                  s.id === step.id ? {...s, instruction: e.target.value} : s
-                                )
-                              }
-                            : w
-                        ))}
-                      />
+                    <div className="flex justify-between items-center mt-3 pt-3 border-t">
+                      <span className="text-xs text-gray-500">Step {idx + 1}</span>
+                      <button
+                        onClick={() => {
+                          setWorkflows(prev => prev.map(w => 
+                            w.id === wf.id 
+                              ? {...w, steps: w.steps.filter(s => s.id !== step.id)}
+                              : w
+                          ));
+                          addAuditEntry("Workflow Modified", `Step removed from workflow`);
+                        }}
+                        className="text-red-600 hover:bg-red-100 p-2 rounded"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  
-                  <div className="flex justify-between items-center mt-3 pt-3 border-t">
-                    <span className="text-xs text-gray-500">Step {idx + 1}</span>
-                    <button
-                      onClick={() => setWorkflows(prev => prev.map(w => 
-                        w.id === wf.id 
-                          ? {...w, steps: w.steps.filter(s => s.id !== step.id)}
-                          : w
-                      ))}
-                      className="text-red-600 hover:bg-red-100 p-2 rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                ))}
+                
+                <div className="flex justify-end pt-3 border-t">
+                  <button
+                    onClick={() => setEditingWorkflow(null)}
+                    className="btn-primary flex items-center space-x-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Save & Close</span>
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+            
+            {!isEditing && (
+              <div className="text-sm text-gray-600">
+                {wf.steps.length} steps configured
+              </div>
+            )}
           </div>
         );
       })}
