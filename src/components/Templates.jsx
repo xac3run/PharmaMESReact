@@ -1,12 +1,5 @@
 import { useState } from "react";
-
-const Icons = {
-  Plus: () => <span>➕</span>,
-  Edit: () => <span>✏️</span>,
-  Save: () => <span>💾</span>,
-  Trash: () => <span>🗑️</span>,
-  Copy: () => <span>📄</span>,
-};
+import { FileText, Plus, Save, Copy, Edit3, Trash2, CheckCircle } from 'lucide-react';
 
 export default function Templates({ templates, setTemplates }) {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -175,31 +168,47 @@ export default function Templates({ templates, setTemplates }) {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold">eBR Templates 📋</h2>
+    <div className="space-y-8">
+      <div className="text-center mb-8 animate-fade-in">
+        <h2 className="text-4xl font-bold mb-2 glow-text" style={{
+          background: 'linear-gradient(135deg, rgb(49,85,77) 0%, rgb(122,154,145) 50%, rgb(195,224,218) 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text'
+        }}>
+          eBR Templates
+        </h2>
+        <p className="text-gray-600 animate-fade-in-delay">Electronic Batch Record template configuration</p>
+      </div>
+
+      <div className="flex justify-end animate-slide-up">
         <button 
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center space-x-2"
+          className="btn-primary flex items-center space-x-2"
           onClick={addTemplate}
         >
-          <Icons.Plus />
+          <Plus className="w-5 h-5" />
           <span>Add Template</span>
         </button>
       </div>
 
       <div className="space-y-4">
-        {templates.map(t => (
-          <div key={t.id} className="border rounded-lg p-4 bg-white shadow">
-            <div className="flex justify-between items-center mb-3">
+        {templates.map((t, index) => (
+          <div 
+            key={t.id} 
+            className="glass-card animate-slide-up hover-lift"
+            style={{animationDelay: `${index * 0.1}s`}}
+          >
+            <div className="flex justify-between items-start mb-4">
               <div className="flex-1">
-                <div className="flex items-center space-x-4 mb-2">
+                <div className="flex items-center space-x-4 mb-3">
+                  <FileText className="w-6 h-6 text-teal-600" />
                   <input
-                    className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none"
+                    className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-gray-300 focus:border-teal-600 focus:outline-none"
                     value={t.name}
                     onChange={(e) => updateTemplate(t.id, 'name', e.target.value)}
                   />
                   <input
-                    className="text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-16"
+                    className="text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-teal-600 focus:outline-none w-16"
                     value={t.version}
                     onChange={(e) => updateTemplate(t.id, 'version', e.target.value)}
                   />
@@ -209,75 +218,76 @@ export default function Templates({ templates, setTemplates }) {
                   <select
                     value={t.status}
                     onChange={(e) => updateTemplate(t.id, 'status', e.target.value)}
-                    className="border rounded px-2 py-1"
+                    className="border rounded px-3 py-1"
                   >
                     <option value="draft">Draft</option>
                     <option value="review">Review</option>
                     <option value="approved">Approved</option>
                   </select>
+                  {t.status === 'approved' && <CheckCircle className="w-4 h-4 text-green-600" />}
                 </div>
               </div>
               <div className="flex space-x-2">
                 <button
                   onClick={() => saveTemplate(t.id)}
-                  className="p-2 text-green-600 hover:bg-green-100 rounded"
+                  className="p-2 text-green-600 hover:bg-green-100 rounded transition-all"
                   title="Save Template"
                 >
-                  <Icons.Save />
+                  <Save className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => createNewVersion(t.id)}
-                  className="p-2 text-purple-600 hover:bg-purple-100 rounded"
+                  className="p-2 text-purple-600 hover:bg-purple-100 rounded transition-all"
                   title="Create New Version"
                 >
                   📝
                 </button>
                 <button
                   onClick={() => cloneTemplate(t.id)}
-                  className="p-2 text-blue-600 hover:bg-blue-100 rounded"
+                  className="p-2 text-blue-600 hover:bg-blue-100 rounded transition-all"
                   title="Clone Template"
                 >
-                  <Icons.Copy />
+                  <Copy className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => setSelectedTemplate(selectedTemplate === t.id ? null : t.id)}
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+                  className="p-2 text-teal-600 hover:bg-teal-100 rounded transition-all"
                   title="Edit Template"
                 >
-                  <Icons.Edit />
+                  <Edit3 className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
             {selectedTemplate === t.id && (
-              <div className="border-t pt-4 space-y-4">
-                {/* Steps Section */}
+              <div className="border-t pt-4 space-y-4 mt-4">
                 <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-md font-semibold">Process Steps (Bill of Process)</h4>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="text-lg font-semibold text-gray-900">Process Steps</h4>
                     <button
                       onClick={() => addStep(t.id)}
-                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                      className="btn-primary flex items-center space-x-2 text-sm px-4 py-2"
                     >
-                      Add Step
+                      <Plus className="w-4 h-4" />
+                      <span>Add Step</span>
                     </button>
                   </div>
                   <div className="space-y-3">
-                    {(t.steps || []).map((step, index) => (
-                      <div key={step.id} className="border rounded p-4 bg-gray-50">
+                    {(t.steps || []).map((step, idx) => (
+                      <div key={step.id} className="border rounded-lg p-4 bg-white/60">
                         <div className="grid grid-cols-2 gap-3 mb-3">
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Step Name</label>
+                            <label className="block text-xs text-gray-600 mb-1 font-semibold">Step Name</label>
                             <input
-                              className="w-full border px-2 py-1 rounded"
+                              className="w-full border px-3 py-2 rounded-lg"
                               value={step.name}
                               onChange={(e) => updateStep(t.id, step.id, "name", e.target.value)}
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Type</label>
+                            <label className="block text-xs text-gray-600 mb-1 font-semibold">Type</label>
                             <select
-                              className="w-full border px-2 py-1 rounded"
+                              className="w-full border px-3 py-2 rounded-lg"
                               value={step.type}
                               onChange={(e) => updateStep(t.id, step.id, "type", e.target.value)}
                             >
@@ -291,28 +301,28 @@ export default function Templates({ templates, setTemplates }) {
                         {(step.type === "input" || step.type === "control") && (
                           <div className="grid grid-cols-3 gap-2 mb-3">
                             <div>
-                              <label className="block text-xs text-gray-600 mb-1">Parameter</label>
+                              <label className="block text-xs text-gray-600 mb-1 font-semibold">Parameter</label>
                               <input
-                                className="w-full border px-2 py-1 rounded"
+                                className="w-full border px-3 py-2 rounded-lg"
                                 placeholder="Parameter name"
                                 value={step.param || ""}
                                 onChange={(e) => updateStep(t.id, step.id, "param", e.target.value)}
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-600 mb-1">Min Value</label>
+                              <label className="block text-xs text-gray-600 mb-1 font-semibold">Min</label>
                               <input
                                 type="number"
-                                className="w-full border px-2 py-1 rounded"
+                                className="w-full border px-3 py-2 rounded-lg"
                                 value={step.min || ""}
                                 onChange={(e) => updateStep(t.id, step.id, "min", parseFloat(e.target.value))}
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-600 mb-1">Max Value</label>
+                              <label className="block text-xs text-gray-600 mb-1 font-semibold">Max</label>
                               <input
                                 type="number"
-                                className="w-full border px-2 py-1 rounded"
+                                className="w-full border px-3 py-2 rounded-lg"
                                 value={step.max || ""}
                                 onChange={(e) => updateStep(t.id, step.id, "max", parseFloat(e.target.value))}
                               />
@@ -321,77 +331,22 @@ export default function Templates({ templates, setTemplates }) {
                         )}
 
                         <div className="mb-3">
-                          <label className="block text-xs text-gray-600 mb-1">Instructions</label>
+                          <label className="block text-xs text-gray-600 mb-1 font-semibold">Instructions</label>
                           <textarea
-                            className="w-full border px-2 py-1 rounded"
+                            className="w-full border px-3 py-2 rounded-lg"
                             rows="2"
-                            placeholder="Detailed instructions for this step..."
                             value={step.instruction || ""}
                             onChange={(e) => updateStep(t.id, step.id, "instruction", e.target.value)}
                           />
                         </div>
 
-                        {/* Materials for this step */}
-                        <div className="mb-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <label className="block text-xs text-gray-600">Materials Required</label>
-                            <button
-                              onClick={() => addMaterialToStep(t.id, step.id)}
-                              className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600"
-                            >
-                              Add Material
-                            </button>
-                          </div>
-                          {step.materials && step.materials.length > 0 && (
-                            <div className="space-y-2 bg-blue-50 p-2 rounded">
-                              {step.materials.map(material => (
-                                <div key={material.id} className="grid grid-cols-5 gap-2 items-center">
-                                  <input
-                                    className="border px-2 py-1 rounded text-xs"
-                                    placeholder="Material name"
-                                    value={material.item}
-                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'item', e.target.value)}
-                                  />
-                                  <input
-                                    type="number"
-                                    className="border px-2 py-1 rounded text-xs"
-                                    placeholder="Qty"
-                                    value={material.quantity}
-                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'quantity', e.target.value)}
-                                  />
-                                  <input
-                                    className="border px-2 py-1 rounded text-xs"
-                                    placeholder="Unit"
-                                    value={material.unit}
-                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'unit', e.target.value)}
-                                  />
-                                  <input
-                                    className="border px-2 py-1 rounded text-xs"
-                                    placeholder="Lot#"
-                                    value={material.lotNumber}
-                                    onChange={(e) => updateStepMaterial(t.id, step.id, material.id, 'lotNumber', e.target.value)}
-                                  />
-                                  <button
-                                    onClick={() => removeMaterialFromStep(t.id, step.id, material.id)}
-                                    className="p-1 text-red-600 hover:bg-red-100 rounded text-xs"
-                                  >
-                                    <Icons.Trash />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex justify-between items-center">
-                          <div className="text-xs text-gray-500">
-                            Step {index + 1} of {t.steps.length}
-                          </div>
+                        <div className="flex justify-between items-center pt-3 border-t">
+                          <span className="text-xs text-gray-500">Step {idx + 1}</span>
                           <button
                             onClick={() => removeStep(t.id, step.id)}
                             className="p-2 text-red-600 hover:bg-red-100 rounded"
                           >
-                            <Icons.Trash />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>

@@ -2,25 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===========================
-   GRADIENT BACKGROUND
-   =========================== */
 body {
   @apply text-gray-800;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #4c51bf 100%);
+  background: linear-gradient(135deg, rgb(195,224,218) 0%, rgb(122,154,145) 50%, rgb(49,85,77) 100%);
   background-attachment: fixed;
   min-height: 100vh;
 }
 
-/* Content wrapper with subtle backdrop blur */
 #root {
   @apply min-h-screen;
   backdrop-filter: blur(0px);
 }
 
-/* ===========================
-   GLASSMORPHISM EFFECTS
-   =========================== */
 @layer components {
   .glass-card {
     @apply bg-white/80 backdrop-blur-xl rounded-xl p-6 shadow-xl border border-white/20;
@@ -54,7 +47,6 @@ body {
     transform: translateX(4px);
   }
 
-  /* Status badges */
   .status-badge {
     @apply px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm;
     transition: all 0.2s ease;
@@ -69,10 +61,9 @@ body {
   }
 
   .status-progress {
-    @apply bg-blue-500/20 text-blue-700 border border-blue-500/30;
+    @apply bg-teal-500/20 text-teal-700 border border-teal-500/30;
   }
 
-  /* Hover lift effect */
   .hover-lift {
     transition: transform 0.3s ease, box-shadow 0.3s ease;
   }
@@ -83,26 +74,16 @@ body {
   }
 }
 
-/* ===========================
-   GLOW TEXT EFFECT
-   =========================== */
 .glow-text {
   text-shadow: 
-    0 0 10px rgba(99, 102, 241, 0.5),
-    0 0 20px rgba(139, 92, 246, 0.3),
-    0 0 30px rgba(99, 102, 241, 0.2);
+    0 0 10px rgba(49, 85, 77, 0.5),
+    0 0 20px rgba(122, 154, 145, 0.3),
+    0 0 30px rgba(49, 85, 77, 0.2);
 }
 
-/* ===========================
-   ANIMATIONS
-   =========================== */
 @keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slide-up {
@@ -116,16 +97,6 @@ body {
   }
 }
 
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-/* Animation classes */
 .animate-fade-in {
   animation: fade-in 0.6s ease-out;
 }
@@ -138,9 +109,6 @@ body {
   animation: slide-up 0.6s ease-out backwards;
 }
 
-/* ===========================
-   CUSTOM SCROLLBAR
-   =========================== */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -151,17 +119,15 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-indigo-500/50 rounded-full;
+  @apply rounded-full;
+  background: rgba(49, 85, 77, 0.5);
   transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-indigo-600/70;
+  background: rgba(49, 85, 77, 0.7);
 }
 
-/* ===========================
-   BUTTON STYLES
-   =========================== */
 button {
   @apply transition-all duration-200;
 }
@@ -174,18 +140,18 @@ button:not(:disabled):active {
   transform: translateY(0);
 }
 
-/* Primary buttons with gradient */
 .btn-primary {
-  @apply bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg;
+  background: linear-gradient(135deg, rgb(49,85,77) 0%, rgb(122,154,145) 100%);
+  @apply text-white px-6 py-3 rounded-lg font-semibold shadow-lg;
   transition: all 0.3s ease;
 }
 
 .btn-primary:hover {
   @apply shadow-xl;
   transform: translateY(-2px);
+  background: linear-gradient(135deg, rgb(39,75,67) 0%, rgb(102,134,125) 100%);
 }
 
-/* Secondary buttons */
 .btn-secondary {
   @apply bg-white/80 backdrop-blur-sm text-gray-700 px-6 py-3 rounded-lg font-semibold border border-gray-300 shadow;
 }
@@ -194,9 +160,6 @@ button:not(:disabled):active {
   @apply bg-white shadow-lg;
 }
 
-/* ===========================
-   INPUT FIELDS
-   =========================== */
 input[type="text"],
 input[type="number"],
 input[type="email"],
@@ -210,12 +173,11 @@ select {
 input:focus,
 textarea:focus,
 select:focus {
-  @apply outline-none ring-2 ring-indigo-500/50 border-indigo-500 bg-white;
+  @apply outline-none border-opacity-100 bg-white;
+  border-color: rgb(49, 85, 77);
+  box-shadow: 0 0 0 3px rgba(49, 85, 77, 0.1);
 }
 
-/* ===========================
-   HEADER & NAVIGATION
-   =========================== */
 header {
   @apply animate-fade-in;
 }
@@ -232,49 +194,20 @@ nav button.font-bold {
   @apply bg-white/30 backdrop-blur-md shadow-lg;
 }
 
-/* ===========================
-   PROGRESS BARS
-   =========================== */
 .progress-bar-gradient {
-  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #6366f1);
+  background: linear-gradient(90deg, rgb(49,85,77), rgb(122,154,145), rgb(195,224,218));
   background-size: 200% 100%;
   animation: gradient-shift 2s ease infinite;
 }
 
 @keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-/* ===========================
-   TOOLTIPS
-   =========================== */
-[data-tooltip] {
-  position: relative;
-}
-
-[data-tooltip]:hover::before {
-  content: attr(data-tooltip);
-  @apply absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-gray-900 text-white text-xs rounded-lg;
-  white-space: nowrap;
-  z-index: 50;
-  animation: fade-in 0.2s ease-out;
-}
-
-/* ===========================
-   LOADING SPINNER
-   =========================== */
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 .spinner {
@@ -282,40 +215,27 @@ nav button.font-bold {
   animation: spin 0.6s linear infinite;
 }
 
-/* ===========================
-   RESPONSIVE IMPROVEMENTS
-   =========================== */
 @media (max-width: 768px) {
   .glass-card {
     @apply p-4;
   }
   
   body {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, rgb(195,224,218) 0%, rgb(49,85,77) 100%);
   }
 }
 
-/* ===========================
-   UTILITY CLASSES
-   =========================== */
 .text-gradient {
-  @apply bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent;
+  background: linear-gradient(135deg, rgb(49,85,77) 0%, rgb(122,154,145) 50%, rgb(195,224,218) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.border-gradient {
-  border-image: linear-gradient(135deg, #667eea, #764ba2, #4c51bf) 1;
-}
-
-/* Backdrop blur utilities */
 .backdrop-blur-strong {
   backdrop-filter: blur(20px);
 }
 
-/* Shadow utilities */
-.shadow-glow-blue {
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
-}
-
-.shadow-glow-purple {
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+.shadow-glow-teal {
+  box-shadow: 0 0 20px rgba(49, 85, 77, 0.4);
 }

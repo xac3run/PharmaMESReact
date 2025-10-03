@@ -1,8 +1,9 @@
 import React, { useState } from "react";
+import { LayoutDashboard, Beaker, FileText, GitBranch, Settings, Users } from "lucide-react";
 import Dashboard from "./components/Dashboard";
 import Batches from "./components/Batches";
 import Templates from "./components/Templates";
-import Workflow from "./components/Workflow";
+import WorkflowComponent from "./components/Workflow";
 import Equipment from "./components/Equipment";
 import Personnel from "./components/Personnel";
 import {
@@ -14,11 +15,12 @@ import {
 } from "./data/demoData";
 
 const Icons = {
-  Dashboard: () => <span>📊</span>,
-  Batch: () => <span>🧪</span>,
-  Template: () => <span>📋</span>,
-  Workflow: () => <span>🔄</span>,
-  User: () => <span>👤</span>,
+  Dashboard: () => <LayoutDashboard className="w-4 h-4" />,
+  Batch: () => <Beaker className="w-4 h-4" />,
+  Template: () => <FileText className="w-4 h-4" />,
+  Workflow: () => <GitBranch className="w-4 h-4" />,
+  Equipment: () => <Settings className="w-4 h-4" />,
+  User: () => <Users className="w-4 h-4" />,
 };
 
 export default function App() {
@@ -35,19 +37,55 @@ export default function App() {
   return (
     <div className="p-6">
       <header className="flex items-center mb-6">
-        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-          <span className="text-white font-bold">N</span>
+        <div className="w-10 h-10 bg-gradient-to-br from-teal-600 to-teal-800 rounded-lg flex items-center justify-center mr-3 shadow-lg">
+          <span className="text-white font-bold text-xl">N</span>
         </div>
-        <h1 className="text-3xl font-bold">Nobilis.Tech MES</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Nobilis.Tech MES</h1>
       </header>
 
-      <nav className="flex space-x-4 border-b pb-2 mb-6">
-        <button onClick={() => setActiveTab("dashboard")} className={activeTab === "dashboard" ? "font-bold" : ""}><Icons.Dashboard /> Dashboard</button>
-        <button onClick={() => setActiveTab("batches")} className={activeTab === "batches" ? "font-bold" : ""}><Icons.Batch /> Batches</button>
-        <button onClick={() => setActiveTab("templates")} className={activeTab === "templates" ? "font-bold" : ""}><Icons.Template /> eBR Templates</button>
-        <button onClick={() => setActiveTab("workflow")} className={activeTab === "workflow" ? "font-bold" : ""}><Icons.Workflow /> Workflow</button>
-        <button onClick={() => setActiveTab("equipment")} className={activeTab === "equipment" ? "font-bold" : ""}>⚙️ Equipment</button>
-        <button onClick={() => setActiveTab("personnel")} className={activeTab === "personnel" ? "font-bold" : ""}><Icons.User /> Personnel</button>
+      <nav className="flex space-x-2 border-b pb-2 mb-6">
+        <button 
+          onClick={() => setActiveTab("dashboard")} 
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${activeTab === "dashboard" ? "font-bold bg-white/30 backdrop-blur-md shadow-lg" : "hover:bg-white/20"}`}
+        >
+          <Icons.Dashboard />
+          <span>Dashboard</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab("batches")} 
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${activeTab === "batches" ? "font-bold bg-white/30 backdrop-blur-md shadow-lg" : "hover:bg-white/20"}`}
+        >
+          <Icons.Batch />
+          <span>Batches</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab("templates")} 
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${activeTab === "templates" ? "font-bold bg-white/30 backdrop-blur-md shadow-lg" : "hover:bg-white/20"}`}
+        >
+          <Icons.Template />
+          <span>eBR Templates</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab("workflow")} 
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${activeTab === "workflow" ? "font-bold bg-white/30 backdrop-blur-md shadow-lg" : "hover:bg-white/20"}`}
+        >
+          <Icons.Workflow />
+          <span>Workflow</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab("equipment")} 
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${activeTab === "equipment" ? "font-bold bg-white/30 backdrop-blur-md shadow-lg" : "hover:bg-white/20"}`}
+        >
+          <Icons.Equipment />
+          <span>Equipment</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab("personnel")} 
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${activeTab === "personnel" ? "font-bold bg-white/30 backdrop-blur-md shadow-lg" : "hover:bg-white/20"}`}
+        >
+          <Icons.User />
+          <span>Personnel</span>
+        </button>
       </nav>
 
       {activeTab === "dashboard" && (
@@ -79,7 +117,7 @@ export default function App() {
       )}
       
       {activeTab === "workflow" && (
-        <Workflow 
+        <WorkflowComponent 
           workflow={workflow}
           setWorkflow={setWorkflow}
           activeWorkflow={activeWorkflow}
