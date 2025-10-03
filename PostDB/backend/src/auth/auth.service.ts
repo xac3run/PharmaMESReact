@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 
@@ -9,24 +9,27 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(username: string, password: string) {
+  async validateUser(username: string, password: string): Promise<any> {
     const user = await this.usersService.findByUsername(username);
-    if (user && password === '1234') {
-      return user;
+    // Simple password check - in production use bcrypt
+    if (user && user.passwordHash === password) {
+      const { passwordHash, ...result } = user;
+      return result;
     }
-    return null;
+    throw new UnauthorizedException('Invalid credentials');
   }
 
   async login(user: any) {
-    const payload = { username: user.username, sub: user.id };
+    const payload = { username: user.username, sub: user.id, role: user.role };
     return {
       access_token: this.jwtService.sign(payload),
-      user: user,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+      },
     };
-  }
-
-  async verifyPassword(username: string, password: string) {
-    const user = await this.validateUser(username, password);
-    return !!user;
   }
 }

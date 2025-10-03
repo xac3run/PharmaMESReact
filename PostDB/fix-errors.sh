@@ -1,3 +1,8 @@
+#!/bin/bash
+
+echo "Fixing TypeScript errors in users.service.ts..."
+
+cat > backend/src/users/users.service.ts << 'ENDFILE'
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -35,15 +40,14 @@ export class UsersService {
     });
   }
 
-  async create(createUserDto: Partial<User>): Promise<User> {
-    const user: User = this.usersRepository.create(createUserDto);
-    return await this.usersRepository.save(user); // ✅ теперь User, не массив
+  async create(createUserDto: any): Promise<User> {
+    const user = this.usersRepository.create(createUserDto);
+    return this.usersRepository.save(user);
   }
 
-  async update(id: string, updateUserDto: Partial<User>): Promise<User> {
-    const user = await this.findOne(id);
-    Object.assign(user, updateUserDto);
-    return await this.usersRepository.save(user); // ✅ возвращает User
+  async update(id: string, updateUserDto: any): Promise<User> {
+    await this.usersRepository.update(id, updateUserDto);
+    return this.findOne(id);
   }
 
   async remove(id: string): Promise<void> {
@@ -51,12 +55,16 @@ export class UsersService {
     await this.usersRepository.remove(user);
   }
 
-  async addCertification(userId: string, certificationData: Partial<Certification>): Promise<Certification> {
+  async addCertification(userId: string, certificationData: any): Promise<Certification> {
     const user = await this.findOne(userId);
-    const certification: Certification = this.certificationsRepository.create({
+    const certification = this.certificationsRepository.create({
       ...certificationData,
       userId: user.id,
     });
-    return await this.certificationsRepository.save(certification); // ✅ возвращает Certification
+    return this.certificationsRepository.save(certification);
   }
 }
+ENDFILE
+
+echo "Fixed! The service should recompile automatically."
+EOF

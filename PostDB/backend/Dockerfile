@@ -1,26 +1,23 @@
-FROM node:20-slim AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Устанавливаем зависимости
+# Copy package files
 COPY package*.json ./
+COPY tsconfig*.json ./
+COPY nest-cli.json ./
+
+# Install dependencies
 RUN npm install
 
-# Копируем исходники
-COPY . .
+# Copy source code
+COPY src ./src
 
-# Собираем NestJS в dist/
-RUN npm run build
+# Build the application (optional for dev)
+# RUN npm run build
 
-# Production stage
-FROM node:20-slim
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm install --omit=dev
-
-# Копируем результат сборки
-COPY --from=builder /app/dist ./dist
-
+# Expose port
 EXPOSE 3001
-CMD ["node", "dist/main.js"]
+
+# Start in development mode
+CMD ["npm", "run", "start:dev"]
