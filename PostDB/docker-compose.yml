@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: nobilis_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: nobilis_mes
+      POSTGRES_USER: nobilis_user
+      POSTGRES_PASSWORD: nobilis_password_change_me
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - nobilis_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nobilis_user -d nobilis_mes"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nobilis_backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: nobilis_mes
+      DATABASE_USER: nobilis_user
+      DATABASE_PASSWORD: nobilis_password_change_me
+      JWT_SECRET: change_this_secret_key_in_production
+      JWT_EXPIRATION: 24h
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - nobilis_network
+    command: npm run start:dev
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  nobilis_network:
+    driver: bridge
