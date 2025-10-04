@@ -17,6 +17,8 @@ export const rolePermissions = {
     canViewAudit: true,
     canExportReports: true,
     canManageRoles: true,
+    canManageCAPAs: true,
+    canViewGenealogy: true,
     allWorkStations: true
   },
   "Master": {
@@ -36,6 +38,8 @@ export const rolePermissions = {
     canViewAudit: true,
     canExportReports: true,
     canManageRoles: false,
+    canManageCAPAs: false,
+    canViewGenealogy: true,
     allWorkStations: true
   },
   "Planner": {
@@ -55,6 +59,8 @@ export const rolePermissions = {
     canViewAudit: true,
     canExportReports: true,
     canManageRoles: false,
+    canManageCAPAs: false,
+    canViewGenealogy: true,
     allWorkStations: false
   },
   "QA": {
@@ -74,6 +80,8 @@ export const rolePermissions = {
     canViewAudit: true,
     canExportReports: true,
     canManageRoles: false,
+    canManageCAPAs: true,
+    canViewGenealogy: true,
     allWorkStations: true
   },
   "Operator": {
@@ -93,6 +101,8 @@ export const rolePermissions = {
     canViewAudit: false,
     canExportReports: false,
     canManageRoles: false,
+    canManageCAPAs: false,
+    canViewGenealogy: false,
     allWorkStations: false
   }
 };
@@ -126,7 +136,9 @@ export const initialMaterials = [
     expiryDate: "2026-12-31",
     receivedDate: "2025-01-15",
     supplier: "Supplier A",
-    lotNumber: "LOT-2025-001"
+    lotNumber: "LOT-2025-001",
+    coa: "COA-2025-001",
+    quarantineTests: []
   },
   {
     id: 2,
@@ -139,7 +151,13 @@ export const initialMaterials = [
     expiryDate: "2025-12-31",
     receivedDate: "2025-10-01",
     supplier: "Supplier B",
-    lotNumber: "LOT-2025-002"
+    lotNumber: "LOT-2025-002",
+    coa: null,
+    quarantineTests: [
+      { test: "Identity", status: "pending", result: null },
+      { test: "Purity", status: "pending", result: null },
+      { test: "Moisture", status: "pending", result: null }
+    ]
   },
   {
     id: 3,
@@ -152,7 +170,9 @@ export const initialMaterials = [
     expiryDate: "2026-06-30",
     receivedDate: "2025-02-20",
     supplier: "Supplier C",
-    lotNumber: "LOT-2025-003"
+    lotNumber: "LOT-2025-003",
+    coa: "COA-2025-003",
+    quarantineTests: []
   }
 ];
 
@@ -174,11 +194,17 @@ export const initialEquipment = [
     currentBatch: null,
     lastBatch: null,
     location: "Room 101",
+    serialNumber: "BAL-2024-001",
+    manufacturer: "Mettler Toledo",
+    model: "XPE5003",
+    installDate: "2024-01-15",
+    calibrationDue: "2025-11-01",
+    lastMaintenance: "2025-09-15",
+    maintenanceInterval: 90,
     globalParameters: { 
       maxCapacity: 5000, 
       precision: 0.01,
-      unit: "g",
-      calibrationDue: "2025-11-01"
+      unit: "g"
     }
   },
   {
@@ -190,6 +216,13 @@ export const initialEquipment = [
     currentBatch: null,
     lastBatch: null,
     location: "Room 102",
+    serialNumber: "MIX-2024-001",
+    manufacturer: "Pharma Mix Inc",
+    model: "PM-500",
+    installDate: "2024-02-20",
+    calibrationDue: "2025-12-01",
+    lastMaintenance: "2025-08-20",
+    maintenanceInterval: 180,
     globalParameters: { 
       volume: 50, 
       rpmRange: [10, 200],
@@ -206,6 +239,13 @@ export const initialEquipment = [
     currentBatch: null,
     lastBatch: "B-2025-099",
     location: "Room 103",
+    serialNumber: "GRAN-2023-001",
+    manufacturer: "GranTech",
+    model: "WT-100",
+    installDate: "2023-11-10",
+    calibrationDue: "2025-10-15",
+    lastMaintenance: "2025-10-01",
+    maintenanceInterval: 120,
     globalParameters: {
       capacity: 100,
       rpmRange: [50, 300],
@@ -256,11 +296,7 @@ export const initialWorkflows = [
         workStationId: 1,
         requiresQC: false,
         instruction: "Dispense API according to formula",
-        stepParameters: {
-          targetWeight: 250,
-          tolerance: 2,
-          unit: "mg"
-        }
+        stepParameters: { targetWeight: 250, tolerance: 2, unit: "mg" }
       },
       {
         id: 2,
@@ -271,11 +307,7 @@ export const initialWorkflows = [
         workStationId: 1,
         requiresQC: false,
         instruction: "Dispense Excipient according to formula",
-        stepParameters: {
-          targetWeight: 200,
-          tolerance: 2,
-          unit: "mg"
-        }
+        stepParameters: { targetWeight: 200, tolerance: 2, unit: "mg" }
       },
       {
         id: 3,
@@ -285,12 +317,7 @@ export const initialWorkflows = [
         workStationId: 1,
         requiresQC: true,
         instruction: "Verify total weight of dispensed materials",
-        qcParameters: {
-          parameter: "Total Weight",
-          min: 445,
-          max: 455,
-          unit: "mg"
-        }
+        qcParameters: { parameter: "Total Weight", min: 445, max: 455, unit: "mg" }
       },
       {
         id: 4,
@@ -300,11 +327,7 @@ export const initialWorkflows = [
         workStationId: 2,
         requiresQC: false,
         instruction: "Mix for 30 minutes at specified RPM",
-        stepParameters: {
-          duration: 30,
-          rpm: 60,
-          temperature: 20
-        }
+        stepParameters: { duration: 30, rpm: 60, temperature: 20 }
       },
       {
         id: 5,
@@ -314,12 +337,7 @@ export const initialWorkflows = [
         workStationId: 2,
         requiresQC: true,
         instruction: "Test mixture homogeneity",
-        qcParameters: {
-          parameter: "Homogeneity",
-          min: 95,
-          max: 100,
-          unit: "%"
-        }
+        qcParameters: { parameter: "Homogeneity", min: 95, max: 100, unit: "%" }
       }
     ]
   }
@@ -395,3 +413,12 @@ export const initialShifts = [
     workStationId: 2
   }
 ];
+
+// New data for GMP features
+export const initialCleaningRecords = [];
+export const initialChangeControls = [];
+export const initialCAPAs = [];
+export const initialEquipmentLogs = [];
+// Add new data exports
+export const initialDeviations = [];
+export const initialComplaints = [];

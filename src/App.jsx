@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import { 
   LayoutDashboard, Beaker, FileText, GitBranch, Settings, Users, 
-  LogIn, LogOut, Package, Clipboard, Monitor, Wrench
+  LogIn, LogOut, Package, Clipboard, Monitor, Wrench, AlertTriangle,
+  Book, TrendingUp, GitMerge, Shield, Droplet, Menu, X, ChevronLeft,
+  FileCheck, Calculator, Lock,
+  MessageSquare
 } from "lucide-react";
 
 // Import components
@@ -15,6 +18,20 @@ import WorkStations from "./components/WorkStations";
 import Personnel from "./components/Personnel";
 import AuditTrail from "./components/AuditTrail";
 import SettingsComponent from "./components/Settings";
+import DeviationManagement from "./components/DeviationManagement";
+import ComplaintHandling from "./components/ComplaintHandling";
+
+// Import NEW GMP components
+import BatchRelease from "./components/BatchRelease";
+import DataIntegrityMonitor from "./components/DataIntegrityMonitor";
+import YieldReconciliation from "./components/YieldReconciliation";
+import CleaningValidation from "./components/CleaningValidation";
+import ChangeControl from "./components/ChangeControl";
+import EquipmentConfigurator from "./components/EquipmentConfigurator";
+import ESignatureModal from "./components/ESignatureModal";
+import EquipmentLogbook from "./components/EquipmentLogbook";
+import CAPASystem from "./components/CAPASystem";
+import GenealogyTracker from "./components/GenealogyTracker";
 
 // Import demo data
 import {
@@ -26,13 +43,21 @@ import {
   initialWorkStations,
   initialPersonnel,
   initialShifts,
-  rolePermissions as initialRolePermissions
+  rolePermissions as initialRolePermissions,
+  equipmentClasses,
+  initialCleaningRecords,
+  initialChangeControls,
+  initialCAPAs,
+  initialEquipmentLogs,
+  initialDeviations,
+  initialComplaints
 } from "./data/demoData";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [language, setLanguage] = useState("en");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
   // State management
   const [batches, setBatches] = useState(initialBatches);
@@ -45,11 +70,50 @@ export default function App() {
   const [shifts, setShifts] = useState(initialShifts);
   const [auditTrail, setAuditTrail] = useState([]);
   const [rolePermissions, setRolePermissions] = useState(initialRolePermissions);
-  
+  const [cleaningRecords, setCleaningRecords] = useState(initialCleaningRecords);
+  const [changes, setChanges] = useState(initialChangeControls);
+  const [capas, setCapas] = useState(initialCAPAs);
+  const [equipmentLogs, setEquipmentLogs] = useState(initialEquipmentLogs);
+  const [equipmentClassesState, setEquipmentClassesState] = useState(equipmentClasses);
+  const [deviations, setDeviations] = useState(initialDeviations);
+  const [complaints, setComplaints] = useState(initialComplaints);
+
   // UI state
   const [expandedBatch, setExpandedBatch] = useState(null);
   const [editingFormula, setEditingFormula] = useState(null);
   const [selectedEquipmentClass, setSelectedEquipmentClass] = useState("Weighing");
+  
+  // E-Signature Modal
+  const [eSignatureModal, setESignatureModal] = useState({
+    isOpen: false,
+    action: '',
+    context: '',
+    onSign: null
+  });
+
+  const showESignature = (action, context, onSign) => {
+    setESignatureModal({
+      isOpen: true,
+      action,
+      context,
+      onSign
+    });
+  };
+
+  const closeESignature = () => {
+    setESignatureModal({
+      isOpen: false,
+      action: '',
+      context: '',
+      onSign: null
+    });
+  };
+
+  const handleESign = (signature) => {
+    if (eSignatureModal.onSign) {
+      eSignatureModal.onSign(signature);
+    }
+  };
 
   // Translation helper
   const t = (key) => {
@@ -71,7 +135,19 @@ export default function App() {
         subtitle: "Manufacturing Execution System",
         loginInstructions: "Demo Login Instructions:",
         enterUsername: "Enter any username (e.g., 'John Operator')",
-        chooseRole: "Choose role: Operator, QA, Master, Planner, or Admin"
+        chooseRole: "Choose role: Operator, QA, Master, Planner, or Admin",
+        production: "Production",
+        quality: "Quality & Compliance",
+        management: "Management",
+        batchRelease: "Batch Release",
+        yieldRecon: "Yield Reconciliation",
+        cleaning: "Cleaning Validation",
+        changeControl: "Change Control",
+        capa: "CAPA System",
+        genealogy: "Genealogy",
+        equipmentLog: "Equipment Logbook",
+        dataIntegrity: "Data Integrity",
+        equipmentConfig: "Equipment Config"
       },
       ru: {
         dashboard: "Панель",
@@ -90,7 +166,19 @@ export default function App() {
         subtitle: "Система управления производством",
         loginInstructions: "Инструкции для входа:",
         enterUsername: "Введите имя пользователя (например 'John Operator')",
-        chooseRole: "Выберите роль: Operator, QA, Master, Planner или Admin"
+        chooseRole: "Выберите роль: Operator, QA, Master, Planner или Admin",
+        production: "Производство",
+        quality: "Качество и соответствие",
+        management: "Управление",
+        batchRelease: "Выпуск партий",
+        yieldRecon: "Сверка выхода",
+        cleaning: "Валидация очистки",
+        changeControl: "Контроль изменений",
+        capa: "Система CAPA",
+        genealogy: "Генеалогия",
+        equipmentLog: "Журнал оборудования",
+        dataIntegrity: "Целостность данных",
+        equipmentConfig: "Конфигурация оборудования"
       }
     };
     return translations[language]?.[key] || translations['en'][key] || key;
@@ -99,7 +187,7 @@ export default function App() {
   // Check permissions
   const hasPermission = (permission) => {
     if (!currentUser) return false;
-    if (currentUser.role === 'Admin') return true; // Admin может все
+    if (currentUser.role === 'Admin') return true;
     return rolePermissions[currentUser.role]?.[permission] || false;
   };
 
@@ -176,7 +264,6 @@ export default function App() {
     const step = workflow.steps.find(s => s.id === stepId);
     const stepIndex = workflow.steps.findIndex(s => s.id === stepId);
     
-    // Validate QC parameters
     if (step.type === "qc" && step.qcParameters) {
       const val = parseFloat(value);
       if (val < step.qcParameters.min || val > step.qcParameters.max) {
@@ -185,7 +272,6 @@ export default function App() {
       }
     }
 
-    // Material consumption
     let materialConsumption = [...batch.materialConsumption];
     if (step.formulaBomId && step.type === "dispensing") {
       const formula = formulas.find(f => f.id === batch.formulaId);
@@ -264,7 +350,9 @@ export default function App() {
       expiryDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
       receivedDate: new Date().toISOString().split('T')[0],
       supplier: "TBD",
-      lotNumber: `LOT-${Date.now()}`
+      lotNumber: `LOT-${Date.now()}`,
+      coa: null,
+      quarantineTests: []
     };
     setMaterials(prev => [...prev, newMaterial]);
     addAuditEntry("Material Created", `New material ${newMaterial.articleNumber} created`);
@@ -281,6 +369,20 @@ export default function App() {
     ));
     const material = materials.find(m => m.id === id);
     addAuditEntry("Material Status Changed", `${material.articleNumber} status changed to ${status}`);
+  };
+
+  // Batch Release
+  const releaseBatch = (batchId, releaseInfo) => {
+    setBatches(prev => prev.map(b => 
+      b.id === batchId ? { ...b, releaseInfo, status: 'released' } : b
+    ));
+  };
+
+  // Yield Reconciliation
+  const updateBatchYield = (batchId, yieldData) => {
+    setBatches(prev => prev.map(b => 
+      b.id === batchId ? { ...b, yieldReconciliation: yieldData, actualYield: yieldData.actualYield } : b
+    ));
   };
 
   // Export batch PDF
@@ -332,6 +434,45 @@ export default function App() {
     addAuditEntry("Report Generated", `${reportType} report generated for batch ${batchId}`, batchId);
   };
 
+  // Sidebar navigation structure
+  const navigationSections = [
+    {
+      title: t('production'),
+      items: [
+        { id: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
+        { id: "batches", label: t("batches"), icon: Beaker },
+        { id: "formulas", label: t("formulas"), icon: FileText },
+        { id: "workflows", label: t("workflows"), icon: GitBranch },
+        { id: "materials", label: t("materials"), icon: Package },
+      ]
+    },
+    {
+      title: t('quality'),
+      items: [
+        { id: "batchRelease", label: t("batchRelease"), icon: FileCheck },
+        { id: "yieldRecon", label: t("yieldRecon"), icon: Calculator },
+        { id: "cleaning", label: t("cleaning"), icon: Droplet },
+        { id: "capa", label: t("capa"), icon: TrendingUp },
+        { id: "genealogy", label: t("genealogy"), icon: GitMerge },
+        { id: "dataIntegrity", label: t("dataIntegrity"), icon: Shield },
+        { id: "deviations", label: "Deviations", icon: AlertTriangle },
+        { id: "complaints", label: "Complaints", icon: MessageSquare },
+      ]
+    },
+    {
+      title: t('management'),
+      items: [
+        { id: "equipment", label: t("equipment"), icon: Wrench },
+        { id: "equipmentLog", label: t("equipmentLog"), icon: Book },
+        { id: "stations", label: t("stations"), icon: Monitor },
+        { id: "personnel", label: t("personnel"), icon: Users },
+        { id: "changeControl", label: t("changeControl"), icon: AlertTriangle },
+        { id: "audit", label: t("audit"), icon: Clipboard },
+        { id: "settings", label: t("settings"), icon: Settings },
+      ]
+    }
+  ];
+
   // Login screen
   if (!currentUser) {
     return (
@@ -356,167 +497,369 @@ export default function App() {
     );
   }
 
-  // Main application
+  // Main application with sidebar
   return (
-    <div className="p-6 min-h-screen">
-      <header className="flex items-center justify-between mb-6">
-        <div className="flex items-center">
-          <div className="w-10 h-10 bg-gradient-to-br from-teal-600 to-teal-800 rounded-lg flex items-center justify-center mr-3 shadow-lg">
-            <span className="text-white font-bold text-xl">N</span>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900">{t('welcome')}</h1>
-        </div>
-        <div className="flex items-center space-x-4">
-          <div className="text-sm text-gray-700 text-right">
-            <div className="font-bold">{currentUser.name}</div>
-            <div className="text-xs text-gray-500">{currentUser.role}</div>
-          </div>
-          <button onClick={handleLogout} className="btn-secondary flex items-center space-x-2">
-            <LogOut className="w-4 h-4" />
-            <span>{t('logout')}</span>
-          </button>
-        </div>
-      </header>
-
-      <nav className="flex space-x-2 border-b pb-2 mb-6 overflow-x-auto">
-        {[
-          { id: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
-          { id: "batches", label: t("batches"), icon: Beaker },
-          { id: "formulas", label: t("formulas"), icon: FileText },
-          { id: "workflows", label: t("workflows"), icon: GitBranch },
-          { id: "materials", label: t("materials"), icon: Package },
-          { id: "equipment", label: t("equipment"), icon: Wrench },
-          { id: "stations", label: t("stations"), icon: Monitor },
-          { id: "personnel", label: t("personnel"), icon: Users },
-          { id: "audit", label: t("audit"), icon: Clipboard },
-          { id: "settings", label: t("settings"), icon: Settings }
-        ].map(tab => (
-          <button 
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)} 
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
-              activeTab === tab.id ? "font-bold bg-white/30 backdrop-blur-md shadow-lg" : "hover:bg-white/20"
-            }`}
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      <div className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-gradient-to-b from-teal-900 to-teal-700 text-white transition-all duration-300 flex flex-col shadow-2xl`}>
+        {/* Logo */}
+        <div className="p-4 border-b border-teal-600 flex items-center justify-between">
+          {!sidebarCollapsed && (
+            <div className="flex items-center space-x-2">
+              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
+                <span className="text-teal-700 font-bold text-xl">N</span>
+              </div>
+              <div>
+                <div className="font-bold text-sm">Nobilis.Tech</div>
+                <div className="text-xs text-teal-200">MES System</div>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="p-2 hover:bg-teal-800 rounded-lg transition-colors"
           >
-            <tab.icon className="w-4 h-4" />
-            <span>{tab.label}</span>
+            {sidebarCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
-        ))}
-      </nav>
+        </div>
 
-      <div className="space-y-6">
-        {activeTab === "dashboard" && (
-          <Dashboard 
-            batches={batches}
-            formulas={formulas}
-            workflows={workflows}
-            auditTrail={auditTrail}
-          />
-        )}
+        {/* Navigation */}
+        <div className="flex-1 overflow-y-auto py-4">
+          {navigationSections.map((section, idx) => (
+            <div key={idx} className="mb-6">
+              {!sidebarCollapsed && (
+                <div className="px-4 mb-2 text-xs font-semibold text-teal-300 uppercase tracking-wider">
+                  {section.title}
+                </div>
+              )}
+              <nav className="space-y-1 px-2">
+                {section.items.map(item => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all ${
+                        isActive 
+                          ? 'bg-white text-teal-900 shadow-lg font-semibold' 
+                          : 'hover:bg-teal-800 text-teal-100'
+                      }`}
+                      title={sidebarCollapsed ? item.label : ''}
+                    >
+                      <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-teal-700' : ''}`} />
+                      {!sidebarCollapsed && <span className="text-sm">{item.label}</span>}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          ))}
+        </div>
 
-        {activeTab === "batches" && (
-          <Batches
-            batches={batches}
-            setBatches={setBatches}
-            formulas={formulas}
-            workflows={workflows}
-            equipment={equipment}
-            workStations={workStations}
-            currentUser={currentUser}
-            expandedBatch={expandedBatch}
-            setExpandedBatch={setExpandedBatch}
-            startBatchProduction={startBatchProduction}
-            executeStep={executeStep}
-            exportBatchPDF={exportBatchPDF}
-          />
-        )}
-
-        {activeTab === "formulas" && (
-          <Formulas
-            formulas={formulas}
-            setFormulas={setFormulas}
-            materials={materials}
-            editingFormula={editingFormula}
-            setEditingFormula={setEditingFormula}
-            addAuditEntry={addAuditEntry}
-          />
-        )}
-
-        {activeTab === "workflows" && (
-          <Workflows
-            workflows={workflows}
-            setWorkflows={setWorkflows}
-            formulas={formulas}
-            equipment={equipment}
-            workStations={workStations}
-            addAuditEntry={addAuditEntry}
-          />
-        )}
-
-        {activeTab === "materials" && (
-          <Materials
-            materials={materials}
-            setMaterials={setMaterials}
-            addNewMaterial={addNewMaterial}
-            updateMaterialStatus={updateMaterialStatus}
-            language={language}
-          />
-        )}
-
-        {activeTab === "equipment" && (
-          <Equipment
-            equipment={equipment}
-            selectedEquipmentClass={selectedEquipmentClass}
-            setSelectedEquipmentClass={setSelectedEquipmentClass}
-            language={language}
-          />
-        )}
-
-        {activeTab === "stations" && (
-          <WorkStations
-            workStations={workStations}
-            setWorkStations={setWorkStations}
-            equipment={equipment}
-            language={language}
-          />
-        )}
-
-        {activeTab === "personnel" && (
-          <Personnel
-            personnel={personnel}
-            setPersonnel={setPersonnel}
-            workStations={workStations}
-            shifts={shifts}
-            setShifts={setShifts}
-            addAuditEntry={addAuditEntry}
-            language={language}
-          />
-        )}
-
-        {activeTab === "audit" && hasPermission('canViewAudit') && (
-          <AuditTrail
-            auditTrail={auditTrail}
-            batches={batches}
-          />
-        )}
-        
-        {activeTab === "audit" && !hasPermission('canViewAudit') && (
-          <div className="glass-card text-center py-16">
-            <p className="text-xl text-gray-600">You don't have permission to view audit trail</p>
+        {/* User Info */}
+        <div className="p-4 border-t border-teal-600">
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-3'}`}>
+            {!sidebarCollapsed && (
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm truncate">{currentUser.name}</div>
+                <div className="text-xs text-teal-200 truncate">{currentUser.role}</div>
+              </div>
+            )}
+            <button
+              onClick={handleLogout}
+              className="p-2 hover:bg-teal-800 rounded-lg transition-colors"
+              title={t('logout')}
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
-        )}
-
-        {activeTab === "settings" && (
-          <SettingsComponent
-            language={language}
-            setLanguage={setLanguage}
-            currentUser={currentUser}
-            addAuditEntry={addAuditEntry}
-            rolePermissions={rolePermissions}
-            setRolePermissions={setRolePermissions}
-          />
-        )}
+        </div>
       </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-6">
+          {/* Quick Stats Bar */}
+          <div className="mb-6 grid grid-cols-4 gap-4">
+            <div className="glass-card text-center hover-lift">
+              <div className="text-2xl font-bold text-teal-700">{batches.filter(b => b.status === 'in_progress').length}</div>
+              <div className="text-xs text-gray-600">Active Batches</div>
+            </div>
+            <div className="glass-card text-center hover-lift">
+              <div className="text-2xl font-bold text-yellow-700">{materials.filter(m => m.status === 'quarantine').length}</div>
+              <div className="text-xs text-gray-600">In Quarantine</div>
+            </div>
+            <div className="glass-card text-center hover-lift">
+              <div className="text-2xl font-bold text-blue-700">{capas.filter(c => c.status !== 'closed').length}</div>
+              <div className="text-xs text-gray-600">Open CAPAs</div>
+            </div>
+            <div className="glass-card text-center hover-lift">
+              <div className="text-2xl font-bold text-green-700">{equipment.filter(e => e.status === 'operational').length}/{equipment.length}</div>
+              <div className="text-xs text-gray-600">Equipment OK</div>
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="space-y-6">
+            {activeTab === "dashboard" && (
+              <Dashboard 
+                batches={batches}
+                formulas={formulas}
+                workflows={workflows}
+                auditTrail={auditTrail}
+              />
+            )}
+
+            {activeTab === "batches" && (
+              <Batches
+                batches={batches}
+                setBatches={setBatches}
+                formulas={formulas}
+                workflows={workflows}
+                equipment={equipment}
+                workStations={workStations}
+                currentUser={currentUser}
+                expandedBatch={expandedBatch}
+                setExpandedBatch={setExpandedBatch}
+                startBatchProduction={startBatchProduction}
+                executeStep={executeStep}
+                exportBatchPDF={exportBatchPDF}
+              />
+            )}
+
+            {activeTab === "formulas" && (
+              <Formulas
+                formulas={formulas}
+                setFormulas={setFormulas}
+                materials={materials}
+                editingFormula={editingFormula}
+                setEditingFormula={setEditingFormula}
+                addAuditEntry={addAuditEntry}
+              />
+            )}
+
+            {activeTab === "workflows" && (
+              <Workflows
+                workflows={workflows}
+                setWorkflows={setWorkflows}
+                formulas={formulas}
+                equipment={equipment}
+                workStations={workStations}
+                addAuditEntry={addAuditEntry}
+              />
+            )}
+
+            {activeTab === "materials" && (
+              <Materials
+                materials={materials}
+                setMaterials={setMaterials}
+                addNewMaterial={addNewMaterial}
+                updateMaterialStatus={updateMaterialStatus}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {activeTab === "equipment" && (
+              <Equipment
+                equipment={equipment}
+                selectedEquipmentClass={selectedEquipmentClass}
+                setSelectedEquipmentClass={setSelectedEquipmentClass}
+                language={language}
+              />
+            )}
+            {activeTab === "deviations" && (
+              <DeviationManagement
+                deviations={deviations}
+                setDeviations={setDeviations}
+                batches={batches}
+                materials={materials}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                capas={capas}
+                setCapas={setCapas}
+                language={language}
+              />
+            )}
+            {activeTab === "deviations" && (
+              <DeviationManagement
+                deviations={deviations}
+                setDeviations={setDeviations}
+                batches={batches}
+                materials={materials}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                capas={capas}
+                setCapas={setCapas}
+                language={language}
+              />
+            )}
+
+            {activeTab === "complaints" && (
+              <ComplaintHandling
+                complaints={complaints}
+                setComplaints={setComplaints}
+                batches={batches}
+                formulas={formulas}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                capas={capas}
+                setCapas={setCapas}
+                language={language}
+              />
+            )}
+
+  
+            {activeTab === "stations" && (
+              <WorkStations
+                workStations={workStations}
+                setWorkStations={setWorkStations}
+                equipment={equipment}
+                language={language}
+              />
+            )}
+
+            {activeTab === "personnel" && (
+              <Personnel
+                personnel={personnel}
+                setPersonnel={setPersonnel}
+                workStations={workStations}
+                shifts={shifts}
+                setShifts={setShifts}
+                addAuditEntry={addAuditEntry}
+                language={language}
+              />
+            )}
+
+            {activeTab === "audit" && hasPermission('canViewAudit') && (
+              <AuditTrail
+                auditTrail={auditTrail}
+                batches={batches}
+              />
+            )}
+            
+            {activeTab === "audit" && !hasPermission('canViewAudit') && (
+              <div className="glass-card text-center py-16">
+                <p className="text-xl text-gray-600">You don't have permission to view audit trail</p>
+              </div>
+            )}
+
+            {activeTab === "settings" && (
+              <SettingsComponent
+                language={language}
+                setLanguage={setLanguage}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                rolePermissions={rolePermissions}
+                setRolePermissions={setRolePermissions}
+              />
+            )}
+
+            {/* NEW COMPONENTS */}
+            {activeTab === "batchRelease" && (
+              <BatchRelease
+                batch={batches.find(b => b.status === 'completed')}
+                workflows={workflows}
+                deviations={deviations}
+                currentUser={currentUser}
+                releaseBatch={releaseBatch}
+                showESignature={showESignature}
+                addAuditEntry={addAuditEntry}
+              />
+            )}
+
+            {activeTab === "yieldRecon" && (
+              <YieldReconciliation
+                batch={batches.find(b => b.status === 'completed')}
+                formula={formulas.find(f => f.id === batches.find(b => b.status === 'completed')?.formulaId)}
+                updateBatchYield={updateBatchYield}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                currentUser={currentUser}
+              />
+            )}
+
+            {activeTab === "cleaning" && (
+              <CleaningValidation
+                cleaningRecords={cleaningRecords}
+                setCleaningRecords={setCleaningRecords}
+                equipment={equipment}
+                formulas={formulas}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {activeTab === "changeControl" && (
+              <ChangeControl
+                changes={changes}
+                setChanges={setChanges}
+                formulas={formulas}
+                workflows={workflows}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {activeTab === "capa" && (
+              <CAPASystem
+                capas={capas}
+                setCapas={setCapas}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {activeTab === "genealogy" && (
+              <GenealogyTracker
+                batches={batches}
+                materials={materials}
+                formulas={formulas}
+                language={language}
+              />
+            )}
+
+            {activeTab === "equipmentLog" && (
+              <EquipmentLogbook
+                equipment={equipment}
+                equipmentLogs={equipmentLogs}
+                setEquipmentLogs={setEquipmentLogs}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {activeTab === "dataIntegrity" && (
+              <DataIntegrityMonitor
+                auditTrail={auditTrail}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* E-Signature Modal */}
+      <ESignatureModal
+        isOpen={eSignatureModal.isOpen}
+        onClose={closeESignature}
+        onSign={handleESign}
+        action={eSignatureModal.action}
+        context={eSignatureModal.context}
+        currentUser={currentUser}
+      />
     </div>
   );
 }
