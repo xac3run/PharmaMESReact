@@ -422,3 +422,6 @@ export const initialEquipmentLogs = [];
 // Add new data exports
 export const initialDeviations = [];
 export const initialComplaints = [];
+// Add to existing exports
+export const initialSOPs = [];
+export const initialEnvRecords = [];

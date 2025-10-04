@@ -4,7 +4,7 @@ import {
   LogIn, LogOut, Package, Clipboard, Monitor, Wrench, AlertTriangle,
   Book, TrendingUp, GitMerge, Shield, Droplet, Menu, X, ChevronLeft,
   FileCheck, Calculator, Lock,
-  MessageSquare
+  MessageSquare, Thermometer
 } from "lucide-react";
 
 // Import components
@@ -32,6 +32,8 @@ import ESignatureModal from "./components/ESignatureModal";
 import EquipmentLogbook from "./components/EquipmentLogbook";
 import CAPASystem from "./components/CAPASystem";
 import GenealogyTracker from "./components/GenealogyTracker";
+import SOPManagement from "./components/SOPManagement";
+import EnvironmentalMonitoring from "./components/EnvironmentalMonitoring";
 
 // Import demo data
 import {
@@ -50,7 +52,10 @@ import {
   initialCAPAs,
   initialEquipmentLogs,
   initialDeviations,
-  initialComplaints
+  initialComplaints,
+  // ... existing
+  initialSOPs,
+  initialEnvRecords
 } from "./data/demoData";
 
 export default function App() {
@@ -77,6 +82,8 @@ export default function App() {
   const [equipmentClassesState, setEquipmentClassesState] = useState(equipmentClasses);
   const [deviations, setDeviations] = useState(initialDeviations);
   const [complaints, setComplaints] = useState(initialComplaints);
+  const [sops, setSops] = useState(initialSOPs);
+  const [envRecords, setEnvRecords] = useState(initialEnvRecords);
 
   // UI state
   const [expandedBatch, setExpandedBatch] = useState(null);
@@ -469,6 +476,9 @@ export default function App() {
         { id: "changeControl", label: t("changeControl"), icon: AlertTriangle },
         { id: "audit", label: t("audit"), icon: Clipboard },
         { id: "settings", label: t("settings"), icon: Settings },
+        // ... existing items
+        { id: "sops", label: "SOPs", icon: FileText },
+        { id: "environmental", label: "Environment", icon: Thermometer },
       ]
     }
   ];
@@ -713,7 +723,29 @@ export default function App() {
                 language={language}
               />
             )}
+            {activeTab === "sops" && (
+              <SOPManagement
+                sops={sops}
+                setSops={setSops}
+                personnel={personnel}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
 
+            {activeTab === "environmental" && (
+              <EnvironmentalMonitoring
+                envRecords={envRecords}
+                setEnvRecords={setEnvRecords}
+                workStations={workStations}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
   
             {activeTab === "stations" && (
               <WorkStations
