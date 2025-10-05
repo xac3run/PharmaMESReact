@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  mes-app:
+    build: .
+    container_name: nobilis-mes
+    ports:
+      - "8080:3000"
+    volumes:
+      - .:/app/frontend
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
