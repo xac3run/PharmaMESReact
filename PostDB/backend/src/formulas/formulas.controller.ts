@@ -14,7 +14,7 @@ import { CreateFormulaDto, UpdateFormulaDto } from './dto/create-formula.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('formulas')
-// temporary @UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard)
 export class FormulasController {
   constructor(private readonly formulasService: FormulasService) {}
 

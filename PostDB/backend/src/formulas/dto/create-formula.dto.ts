@@ -1,22 +1,40 @@
-import { IsString, IsNumber, IsOptional, IsArray, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsNumber, IsOptional, IsArray, ValidateNested, Min } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 export class CreateFormulaBomDto {
   @IsString()
   materialArticle: string;
 
-  @IsNumber()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return 0;
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  })
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
   quantity: number;
 
   @IsString()
   @IsOptional()
   unit?: string = 'mg';
 
-  @IsNumber()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return 0;
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  })
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
   @IsOptional()
   minQuantity?: number = 0;
 
-  @IsNumber()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return 0;
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  })
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
   @IsOptional()
   maxQuantity?: number = 0;
 
@@ -32,7 +50,13 @@ export class CreateFormulaDto {
   @IsString()
   productName: string;
 
-  @IsNumber()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return 0;
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  })
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
   @IsOptional()
   weightPerUnit?: number = 0;
 
@@ -64,7 +88,13 @@ export class UpdateFormulaDto {
   @IsOptional()
   productName?: string;
 
-  @IsNumber()
+  @Transform(({ value }) => {
+    if (value === '' || value === null || value === undefined) return 0;
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  })
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
   @IsOptional()
   weightPerUnit?: number;
 

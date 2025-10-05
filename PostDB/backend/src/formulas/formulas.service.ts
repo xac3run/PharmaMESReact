@@ -60,23 +60,32 @@ export class FormulasService {
   async update(id: string, updateFormulaDto: UpdateFormulaDto): Promise<Formula> {
     const formula = await this.findOne(id);
 
-    // Update formula fields
-    Object.assign(formula, updateFormulaDto);
-    await this.formulasRepository.save(formula);
+    // Отделяем BOM от остальных полей
+    const { bom, ...formulaFields } = updateFormulaDto;
 
-    // Update BOM if provided
-    if (updateFormulaDto.bom) {
-      // Remove existing BOM items
+   // Update formula fields (без BOM)
+      Object.assign(formula, formulaFields);
+      await this.formulasRepository.save(formula);
+
+    // Update BOM ТОЛЬКО если BOM данные переданы
+      if (bom !== undefined) {
+    // Remove existing BOM items
       await this.bomRepository.delete({ formulaId: id });
       
-      // Create new BOM items
-      if (updateFormulaDto.bom.length > 0) {
-        const bomItems = updateFormulaDto.bom.map(bomItem => 
-          this.bomRepository.create({
-            ...bomItem,
-            formulaId: id
-          })
-        );
+      // Create new BOM items if any provided
+      if (bom.length > 0) {
+      const bomItems = bom.map(bomItem => 
+        this.bomRepository.create({
+          materialArticle: bomItem.materialArticle,
+          quantity: bomItem.quantity,
+          unit: bomItem.unit,
+          minQuantity: bomItem.minQuantity,
+          maxQuantity: bomItem.maxQuantity,
+          materialType: bomItem.materialType,
+          formulaId: id  // Явно устанавливаем formula_id
+        })
+      );
+        console.log('Creating BOM items:', bomItems); // Для отладки
         await this.bomRepository.save(bomItems);
       }
     }
