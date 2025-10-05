@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { apiClient } from "./api/client";
 import { 
   LayoutDashboard, Beaker, FileText, GitBranch, Settings, Users, 
   LogIn, LogOut, Package, Clipboard, Monitor, Wrench, AlertTriangle,
@@ -212,24 +213,30 @@ export default function App() {
   };
 
   // Login/Logout handlers
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const username = prompt("Enter username:");
-    const role = prompt("Enter role (Operator/QA/Master/Planner/Admin):");
-    if (username && role) {
-      const existingUser = personnel.find(p => p.name === username);
-      const user = existingUser || { 
-        name: username, 
-        role: role,
-        allowedWorkStations: rolePermissions[role]?.allWorkStations ? [1, 2, 3] : []
-      };
-      setCurrentUser(user);
-      addAuditEntry("User Login", `${username} logged in as ${role}`);
+    const password = prompt("Enter password:");
+    
+    if (username && password) {
+      try {
+        const response = await apiClient.login(username, password);
+        const user = {
+          name: username,
+          role: response.user?.role || 'operator',
+          allowedWorkStations: [1, 2, 3]
+        };
+        setCurrentUser(user);
+        addAuditEntry("User Login", `${username} logged in as ${user.role}`);
+      } catch (error) {
+        alert(`Login failed: ${error.message}`);
+      }
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (currentUser) {
       addAuditEntry("User Logout", `${currentUser.name} logged out`);
+      await apiClient.logout();
       setCurrentUser(null);
     }
   };
@@ -639,12 +646,13 @@ export default function App() {
 
             {activeTab === "formulas" && (
               <Formulas
-                formulas={formulas}
-                setFormulas={setFormulas}
-                materials={materials}
-                editingFormula={editingFormula}
-                setEditingFormula={setEditingFormula}
+               // formulas={formulas}
+               // setFormulas={setFormulas}
+               // materials={materials}
+               // editingFormula={editingFormula}
+                //setEditingFormula={setEditingFormula}
                 addAuditEntry={addAuditEntry}
+                language={language}
               />
             )}
 

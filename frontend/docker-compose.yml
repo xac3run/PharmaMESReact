@@ -5,10 +5,12 @@ services:
     build: .
     container_name: nobilis-mes
     ports:
-      - "8080:3000"
+      - "8080:3000" # for local test
+     # - "8080:5173" # for API test
     volumes:
       - .:/app/frontend
       - /app/node_modules
     environment:
       - NODE_ENV=development
+      #- REACT_APP_API_URL=http://77.233.212.181:3001/api // for API shk
     restart: unless-stopped

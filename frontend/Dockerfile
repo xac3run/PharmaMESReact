@@ -17,4 +17,5 @@ COPY . .
 EXPOSE 5173
 
 # Запускаем dev сервер
+#ENV REACT_APP_API_URL=http://77.233.212.181:3001/api // for API shk
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

@@ -43,9 +43,9 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
-  console.log(`🚀 Application is running on: http://localhost:${port}`);
-  console.log(`📌 API endpoint: http://localhost:${port}/${apiPrefix}`);
-  console.log(`📖 Swagger docs: http://localhost:${port}/swagger`);
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 Application is running on: http://77.233.212.181:${port}`);  // меняете localhost
+console.log(`📌 API endpoint: http://77.233.212.181:${port}/${apiPrefix}`);  // меняете localhost
+console.log(`📖 Swagger docs: http://77.233.212.181:${port}/swagger`);  // меняете localhost
 }
 bootstrap();

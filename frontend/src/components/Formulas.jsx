@@ -1,16 +1,19 @@
-import React from 'react';
-import { Plus, Trash2, Edit3, Save, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Edit3, Save, CheckCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { apiClient } from '../api/client';
 
 export default function Formulas({ 
-  formulas, 
-  setFormulas, 
-  materials,
-  editingFormula,
-  setEditingFormula,
   addAuditEntry,
   language = 'en'
 }) {
-  const [expandedFormula, setExpandedFormula] = React.useState(null);
+  console.log('Formulas component loaded!'); // добавьте эту строку
+  const [formulas, setFormulas] = useState([]);
+  const [materials, setMaterials] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expandedFormula, setExpandedFormula] = useState(null);
+  const [editingFormula, setEditingFormula] = useState(null);
+  const [saving, setSaving] = useState(false);
   
   const t = (key) => {
     const translations = {
@@ -24,7 +27,11 @@ export default function Formulas({
         status: "Status",
         bom: "BOM",
         actions: "Actions",
-        details: "Details"
+        details: "Details",
+        loading: "Loading...",
+        error: "Error loading data",
+        save: "Save",
+        cancel: "Cancel"
       },
       ru: {
         formulaManagement: "Управление формулами",
@@ -36,19 +43,200 @@ export default function Formulas({
         status: "Статус",
         bom: "Состав",
         actions: "Действия",
-        details: "Подробности"
+        details: "Подробности",
+        loading: "Загрузка...",
+        error: "Ошибка загрузки данных",
+        save: "Сохранить",
+        cancel: "Отмена"
       }
     };
     return translations[language]?.[key] || translations['en'][key] || key;
   };
-  
-  const updateFormulaStatus = (id, status) => {
-    setFormulas(prev => prev.map(f => 
-      f.id === id ? {...f, status} : f
-    ));
-    const formula = formulas.find(f => f.id === id);
-    addAuditEntry("Formula Status Changed", `${formula.articleNumber} status changed to ${status}`);
+
+  // Load data on component mount
+  useEffect(() => {
+    console.log('🔄 useEffect called!');
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+     console.log('📡 loadData started!');
+    console.log('API URL:', 'http://77.233.212.181:3001/api');
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const [formulasData, materialsData] = await Promise.all([
+        apiClient.getFormulas(),
+        apiClient.getMaterials()
+      ]);
+      
+      console.log('Loaded formulas:', formulasData); // добавьте эту строку
+      console.log('Loaded materials:', materialsData); // добавьте эту строку
+
+      setFormulas(formulasData);
+      setMaterials(materialsData);
+    } catch (err) {
+      setError(err.message);
+      console.error('Failed to load data:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const createNewFormula = async () => {
+    try {
+      setSaving(true);
+      
+      const newFormulaData = {
+        articleNumber: `FORM-${String(formulas.length + 1).padStart(3, '0')}`,
+        productName: "New Product",
+        weightPerUnit: 0,
+        productType: "dosing",
+        status: "draft",
+        version: "0.1",
+        bom: []
+      };
+
+      const createdFormula = await apiClient.createFormula(newFormulaData);
+      setFormulas(prev => [createdFormula, ...prev]);
+      setEditingFormula(createdFormula.id);
+      
+      if (addAuditEntry) {
+        addAuditEntry("Formula Created", `New formula ${createdFormula.articleNumber} created`);
+      }
+    } catch (err) {
+      setError(`Failed to create formula: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateFormulaStatus = async (id, status) => {
+    try {
+      const updatedFormula = await apiClient.updateFormulaStatus(id, status);
+      setFormulas(prev => prev.map(f => 
+        f.id === id ? updatedFormula : f
+      ));
+      
+      if (addAuditEntry) {
+        addAuditEntry("Formula Status Changed", `Formula ${updatedFormula.articleNumber} status changed to ${status}`);
+      }
+    } catch (err) {
+      setError(`Failed to update status: ${err.message}`);
+    }
+  };
+
+  const saveFormula = async (formulaId, formulaData) => {
+    try {
+      setSaving(true);
+      const updatedFormula = await apiClient.updateFormula(formulaId, formulaData);
+      setFormulas(prev => prev.map(f => 
+        f.id === formulaId ? updatedFormula : f
+      ));
+      setEditingFormula(null);
+      
+      if (addAuditEntry) {
+        addAuditEntry("Formula Updated", `Formula ${updatedFormula.articleNumber} updated`);
+      }
+    } catch (err) {
+      setError(`Failed to save formula: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteFormula = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this formula?')) {
+      return;
+    }
+
+    try {
+      await apiClient.deleteFormula(id);
+      setFormulas(prev => prev.filter(f => f.id !== id));
+      
+      if (addAuditEntry) {
+        addAuditEntry("Formula Deleted", `Formula deleted`);
+      }
+    } catch (err) {
+      setError(`Failed to delete formula: ${err.message}`);
+    }
+  };
+
+  // Handle editing formula data
+  const updateEditingFormula = (field, value) => {
+    setFormulas(prev => prev.map(f => 
+      f.id === editingFormula 
+        ? { ...f, [field]: value }
+        : f
+    ));
+  };
+
+  const updateEditingBom = (bomIndex, field, value) => {
+    setFormulas(prev => prev.map(f => 
+      f.id === editingFormula 
+        ? {
+            ...f,
+            bom: f.bom.map((item, index) => 
+              index === bomIndex ? { ...item, [field]: value } : item
+            )
+          }
+        : f
+    ));
+  };
+
+  const addBomItem = () => {
+    setFormulas(prev => prev.map(f => 
+      f.id === editingFormula 
+        ? {
+            ...f,
+            bom: [...f.bom, {
+              id: `temp-${Date.now()}`,
+              materialArticle: "",
+              quantity: 0,
+              unit: "mg",
+              minQuantity: 0,
+              maxQuantity: 0,
+              materialType: "raw_material"
+            }]
+          }
+        : f
+    ));
+  };
+
+  const removeBomItem = (bomIndex) => {
+    setFormulas(prev => prev.map(f => 
+      f.id === editingFormula 
+        ? {
+            ...f,
+            bom: f.bom.filter((_, index) => index !== bomIndex)
+          }
+        : f
+    ));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+        <span className="ml-2 text-gray-600">{t('loading')}</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">{t('error')}: {error}</p>
+        <button 
+          onClick={loadData}
+          className="mt-2 btn-primary text-sm"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -56,23 +244,14 @@ export default function Formulas({
         <h2 className="text-2xl font-bold">{t('formulaManagement')}</h2>
         <button 
           className="btn-primary flex items-center space-x-2"
-          onClick={() => {
-            const newFormula = {
-              id: Date.now(),
-              articleNumber: `ART-${String(formulas.length + 1).padStart(3, '0')}`,
-              productName: "New Product",
-              weightPerUnit: 0,
-              productType: "dosing",
-              status: "draft",
-              version: "0.1",
-              bom: []
-            };
-            setFormulas(prev => [...prev, newFormula]);
-            setEditingFormula(newFormula.id);
-            addAuditEntry("Formula Created", `New formula ${newFormula.articleNumber} created`);
-          }}
+          onClick={createNewFormula}
+          disabled={saving}
         >
-          <Plus className="w-4 h-4" />
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Plus className="w-4 h-4" />
+          )}
           <span>{t('newFormula')}</span>
         </button>
       </div>
@@ -98,7 +277,7 @@ export default function Formulas({
                   <td className="py-2 px-2 text-xs">{formula.productName}</td>
                   <td className="py-2 px-2 text-xs">{formula.weightPerUnit}mg</td>
                   <td className="py-2 px-2 text-xs">{formula.productType}</td>
-                  <td className="py-2 px-2 text-xs">{formula.bom.length} items</td>
+                  <td className="py-2 px-2 text-xs">{formula.bom?.length || 0} items</td>
                   <td className="py-2 px-2">
                     <select
                       className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -117,11 +296,26 @@ export default function Formulas({
                   <td className="py-2 px-2">
                     <div className="flex space-x-1">
                       <button
-                        onClick={() => setEditingFormula(editingFormula === formula.id ? null : formula.id)}
+                        onClick={() => {
+                          if (editingFormula === formula.id) {
+                            // Save formula
+                            saveFormula(formula.id, formula);
+                          } else {
+                            // Start editing
+                            setEditingFormula(formula.id);
+                          }
+                        }}
                         className="p-1 hover:bg-blue-100 rounded text-blue-600"
-                        title="Edit"
+                        title={editingFormula === formula.id ? "Save" : "Edit"}
+                        disabled={saving}
                       >
-                        {editingFormula === formula.id ? <Save className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
+                        {saving && editingFormula === formula.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : editingFormula === formula.id ? (
+                          <Save className="w-3 h-3" />
+                        ) : (
+                          <Edit3 className="w-3 h-3" />
+                        )}
                       </button>
                       <button
                         onClick={() => setExpandedFormula(expandedFormula === formula.id ? null : formula.id)}
@@ -129,6 +323,13 @@ export default function Formulas({
                         title="Details"
                       >
                         {expandedFormula === formula.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                      <button
+                        onClick={() => deleteFormula(formula.id)}
+                        className="p-1 hover:bg-red-100 rounded text-red-600"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   </td>
@@ -145,12 +346,7 @@ export default function Formulas({
                               <input
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={formula.articleNumber}
-                                onChange={(e) => {
-                                  setFormulas(prev => prev.map(f => 
-                                    f.id === formula.id ? {...f, articleNumber: e.target.value} : f
-                                  ));
-                                  addAuditEntry("Formula Modified", `Article number changed to ${e.target.value}`);
-                                }}
+                                onChange={(e) => updateEditingFormula('articleNumber', e.target.value)}
                               />
                             </div>
                             <div>
@@ -158,12 +354,7 @@ export default function Formulas({
                               <input
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={formula.productName}
-                                onChange={(e) => {
-                                  setFormulas(prev => prev.map(f => 
-                                    f.id === formula.id ? {...f, productName: e.target.value} : f
-                                  ));
-                                  addAuditEntry("Formula Modified", `Product name changed to ${e.target.value}`);
-                                }}
+                                onChange={(e) => updateEditingFormula('productName', e.target.value)}
                               />
                             </div>
                             <div>
@@ -172,12 +363,7 @@ export default function Formulas({
                                 type="number"
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={formula.weightPerUnit}
-                                onChange={(e) => {
-                                  setFormulas(prev => prev.map(f => 
-                                    f.id === formula.id ? {...f, weightPerUnit: parseFloat(e.target.value)} : f
-                                  ));
-                                  addAuditEntry("Formula Modified", `Weight changed to ${e.target.value}mg`);
-                                }}
+                                onChange={(e) => updateEditingFormula('weightPerUnit', parseFloat(e.target.value) || 0)}
                               />
                             </div>
                             <div>
@@ -185,12 +371,7 @@ export default function Formulas({
                               <select
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={formula.productType}
-                                onChange={(e) => {
-                                  setFormulas(prev => prev.map(f => 
-                                    f.id === formula.id ? {...f, productType: e.target.value} : f
-                                  ));
-                                  addAuditEntry("Formula Modified", `Type changed to ${e.target.value}`);
-                                }}
+                                onChange={(e) => updateEditingFormula('productType', e.target.value)}
                               >
                                 <option value="dosing">Dosing</option>
                                 <option value="packaging">Packaging</option>
@@ -203,25 +384,7 @@ export default function Formulas({
                             <div className="flex justify-between items-center mb-2">
                               <label className="font-semibold text-xs">Bill of Materials</label>
                               <button
-                                onClick={() => {
-                                  setFormulas(prev => prev.map(f => 
-                                    f.id === formula.id 
-                                      ? {
-                                          ...f, 
-                                          bom: [...f.bom, {
-                                            id: Date.now(),
-                                            materialArticle: "",
-                                            quantity: 0,
-                                            unit: "mg",
-                                            min: 0,
-                                            max: 0,
-                                            type: "raw_material"
-                                          }]
-                                        }
-                                      : f
-                                  ));
-                                  addAuditEntry("Formula Modified", `BOM item added`);
-                                }}
+                                onClick={addBomItem}
                                 className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
                               >
                                 + Add
@@ -229,31 +392,20 @@ export default function Formulas({
                             </div>
                             
                             <div className="space-y-1">
-                              {formula.bom.map(bomItem => (
-                                <div key={bomItem.id} className="border rounded p-2 bg-white/40">
+                              {(formula.bom || []).map((bomItem, bomIndex) => (
+                                <div key={bomItem.id || bomIndex} className="border rounded p-2 bg-white/40">
                                   <div className="grid grid-cols-7 gap-2 items-end">
                                     <div className="col-span-2">
                                       <label className="block text-xs mb-1">Material</label>
                                       <select
                                         className="border rounded px-2 py-1 w-full text-xs"
                                         value={bomItem.materialArticle}
-                                        onChange={(e) => {
-                                          setFormulas(prev => prev.map(f => 
-                                            f.id === formula.id 
-                                              ? {
-                                                  ...f,
-                                                  bom: f.bom.map(b => 
-                                                    b.id === bomItem.id ? {...b, materialArticle: e.target.value} : b
-                                                  )
-                                                }
-                                              : f
-                                          ));
-                                        }}
+                                        onChange={(e) => updateEditingBom(bomIndex, 'materialArticle', e.target.value)}
                                       >
                                         <option value="">Select</option>
                                         {materials.map(m => (
                                           <option key={m.id} value={m.articleNumber}>
-                                            {m.articleNumber}
+                                            {m.articleNumber} - {m.name}
                                           </option>
                                         ))}
                                       </select>
@@ -262,19 +414,8 @@ export default function Formulas({
                                       <label className="block text-xs mb-1">Type</label>
                                       <select
                                         className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.type || "raw_material"}
-                                        onChange={(e) => {
-                                          setFormulas(prev => prev.map(f => 
-                                            f.id === formula.id 
-                                              ? {
-                                                  ...f,
-                                                  bom: f.bom.map(b => 
-                                                    b.id === bomItem.id ? {...b, type: e.target.value} : b
-                                                  )
-                                                }
-                                              : f
-                                          ));
-                                        }}
+                                        value={bomItem.materialType || "raw_material"}
+                                        onChange={(e) => updateEditingBom(bomIndex, 'materialType', e.target.value)}
                                       >
                                         <option value="raw_material">Raw</option>
                                         <option value="intermediate">Inter</option>
@@ -287,18 +428,7 @@ export default function Formulas({
                                         type="number"
                                         className="border rounded px-2 py-1 w-full text-xs"
                                         value={bomItem.quantity}
-                                        onChange={(e) => {
-                                          setFormulas(prev => prev.map(f => 
-                                            f.id === formula.id 
-                                              ? {
-                                                  ...f,
-                                                  bom: f.bom.map(b => 
-                                                    b.id === bomItem.id ? {...b, quantity: parseFloat(e.target.value)} : b
-                                                  )
-                                                }
-                                              : f
-                                          ));
-                                        }}
+                                        onChange={(e) => updateEditingBom(bomIndex, 'quantity', parseFloat(e.target.value) || 0)}
                                       />
                                     </div>
                                     <div>
@@ -306,19 +436,8 @@ export default function Formulas({
                                       <input
                                         type="number"
                                         className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.min || 0}
-                                        onChange={(e) => {
-                                          setFormulas(prev => prev.map(f => 
-                                            f.id === formula.id 
-                                              ? {
-                                                  ...f,
-                                                  bom: f.bom.map(b => 
-                                                    b.id === bomItem.id ? {...b, min: parseFloat(e.target.value)} : b
-                                                  )
-                                                }
-                                              : f
-                                          ));
-                                        }}
+                                        value={bomItem.minQuantity || 0}
+                                        onChange={(e) => updateEditingBom(bomIndex, 'minQuantity', parseFloat(e.target.value) || 0)}
                                       />
                                     </div>
                                     <div>
@@ -326,29 +445,12 @@ export default function Formulas({
                                       <input
                                         type="number"
                                         className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.max || 0}
-                                        onChange={(e) => {
-                                          setFormulas(prev => prev.map(f => 
-                                            f.id === formula.id 
-                                              ? {
-                                                  ...f,
-                                                  bom: f.bom.map(b => 
-                                                    b.id === bomItem.id ? {...b, max: parseFloat(e.target.value)} : b
-                                                  )
-                                                }
-                                              : f
-                                          ));
-                                        }}
+                                        value={bomItem.maxQuantity || 0}
+                                        onChange={(e) => updateEditingBom(bomIndex, 'maxQuantity', parseFloat(e.target.value) || 0)}
                                       />
                                     </div>
                                     <button
-                                      onClick={() => {
-                                        setFormulas(prev => prev.map(f => 
-                                          f.id === formula.id 
-                                            ? {...f, bom: f.bom.filter(b => b.id !== bomItem.id)}
-                                            : f
-                                        ));
-                                      }}
+                                      onClick={() => removeBomItem(bomIndex)}
                                       className="text-red-600 hover:bg-red-100 p-1 rounded"
                                     >
                                       <Trash2 className="w-3 h-3" />
@@ -359,12 +461,25 @@ export default function Formulas({
                             </div>
                           </div>
                           
-                          <button
-                            onClick={() => setEditingFormula(null)}
-                            className="btn-primary text-xs px-3 py-1"
-                          >
-                            Save & Close
-                          </button>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => saveFormula(formula.id, formula)}
+                              className="btn-primary text-xs px-3 py-1"
+                              disabled={saving}
+                            >
+                              {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                              {t('save')}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingFormula(null);
+                                loadData(); // Reload to cancel changes
+                              }}
+                              className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
+                            >
+                              {t('cancel')}
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="text-xs space-y-2">
@@ -372,18 +487,20 @@ export default function Formulas({
                             <div><span className="font-semibold">Version:</span> {formula.version}</div>
                             <div><span className="font-semibold">Weight:</span> {formula.weightPerUnit}mg</div>
                             <div><span className="font-semibold">Type:</span> {formula.productType}</div>
-                            <div><span className="font-semibold">BOM Items:</span> {formula.bom.length}</div>
+                            <div><span className="font-semibold">BOM Items:</span> {formula.bom?.length || 0}</div>
                           </div>
-                          <div>
-                            <span className="font-semibold">Materials:</span>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {formula.bom.map(b => (
-                                <span key={b.id} className="bg-gray-100 px-2 py-0.5 rounded text-xs">
-                                  {b.materialArticle}: {b.quantity}{b.unit}
-                                </span>
-                              ))}
+                          {formula.bom && formula.bom.length > 0 && (
+                            <div>
+                              <span className="font-semibold">Materials:</span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {formula.bom.map((b, index) => (
+                                  <span key={b.id || index} className="bg-gray-100 px-2 py-0.5 rounded text-xs">
+                                    {b.materialArticle}: {b.quantity}{b.unit}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       )}
                     </td>
