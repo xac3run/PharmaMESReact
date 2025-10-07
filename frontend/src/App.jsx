@@ -776,18 +776,13 @@ export default function App() {
               />
             )}
 
-            {activeTab === "audit" && hasPermission('canViewAudit') && (
+            {activeTab === "audit" && (
               <AuditTrail
                 auditTrail={auditTrail}
                 batches={batches}
               />
             )}
             
-            {activeTab === "audit" && !hasPermission('canViewAudit') && (
-              <div className="glass-card text-center py-16">
-                <p className="text-xl text-gray-600">You don't have permission to view audit trail</p>
-              </div>
-            )}
 
             {activeTab === "settings" && (
               <SettingsComponent
