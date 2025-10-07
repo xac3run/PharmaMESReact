@@ -9,6 +9,9 @@ export default function AuditTrail({ auditTrail = [], batches = [] }) {
 
   useEffect(() => {
     loadApiAuditTrail();
+    // Автообновление каждые 5 секунд
+    const interval = setInterval(loadApiAuditTrail, 5000);
+  return () => clearInterval(interval);
   }, []);
 
   const loadApiAuditTrail = async () => {

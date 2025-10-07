@@ -132,43 +132,26 @@ export class AuditService {
     }
   }
 
-  async getAuditTrail(query: AuditQuery): Promise<{ entries: AuditTrail[], total: number }> {
-    const queryBuilder = this.auditTrailRepository
-      .createQueryBuilder('audit')
-      .leftJoinAndSelect('audit.user', 'user')
-      .leftJoinAndSelect('audit.signatures', 'signatures');
-
-    if (query.userId) {
-      queryBuilder.andWhere('audit.userId = :userId', { userId: query.userId });
-    }
-
-    if (query.actionType) {
-      queryBuilder.andWhere('audit.actionType = :actionType', { actionType: query.actionType });
-    }
-
-    if (query.tableName) {
-      queryBuilder.andWhere('audit.tableName = :tableName', { tableName: query.tableName });
-    }
-
-    if (query.recordId) {
-      queryBuilder.andWhere('audit.recordId = :recordId', { recordId: query.recordId });
-    }
-
-    queryBuilder.orderBy('audit.sequenceNumber', 'DESC');
-
-    const total = await queryBuilder.getCount();
-
-    if (query.limit) {
-      queryBuilder.limit(query.limit);
-    }
-
-    if (query.offset) {
-      queryBuilder.offset(query.offset);
-    }
-
-    const entries = await queryBuilder.getMany();
-    return { entries, total };
+ async getAuditTrail(query: AuditQuery = {}): Promise<{ entries: AuditTrail[], total: number }> {
+  try {
+    // Максимально простой запрос без joins
+    const entries = await this.auditTrailRepository.find({
+      order: { timestamp: 'DESC' },
+      take: 50
+    });
+    
+    console.log('Found entries:', entries.length); // Отладка
+    
+    return { 
+      entries: entries || [], 
+      total: entries?.length || 0 
+    };
+  } catch (error) {
+    console.error('AuditService error:', error);
+    this.logger.error(`Error in getAuditTrail: ${error.message}`);
+    return { entries: [], total: 0 };
   }
+}
 
   private async getUserCertificate(userId: string): Promise<UserCertificate | null> {
     return this.certificateRepository.findOne({
