@@ -383,13 +383,66 @@ export const initialBatches = [
     workflowId: 1,
     targetQuantity: 1000,
     status: "ready",
+    priority: "normal",  // Добавить это поле!
     progress: 0,
     currentStep: null,
     currentStepIndex: 0,
     history: [],
     materialConsumption: [],
     createdDate: "2025-10-03",
-    createdBy: "System"
+    createdBy: "System",
+    createdAt: "2025-10-03T08:00:00Z",
+    startedAt: null,
+    completedAt: null,
+    startedBy: null
+  },
+  // Можно добавить еще тестовые батчи:
+  {
+    id: "B-2025-002",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 500,
+    status: "in_progress",
+    priority: "high",
+    progress: 60,
+    currentStep: 3,
+    currentStepIndex: 2,
+    history: [
+      {
+        stepId: 1,
+        stepName: "Dispense API",
+        value: "250.5",
+        lotNumber: "LOT-2025-001",
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T09:00:00Z",
+        workStation: "Dispensing Station 1"
+      },
+      {
+        stepId: 2,
+        stepName: "Dispense Excipient",
+        value: "200.2",
+        lotNumber: "LOT-2025-002",
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T09:15:00Z",
+        workStation: "Dispensing Station 1"
+      }
+    ],
+    materialConsumption: [
+      {
+        stepId: 1,
+        materialArticle: "MAT-001",
+        quantity: 125.25,
+        unit: "g",
+        lotNumber: "LOT-2025-001",
+        timestamp: "2025-10-03T09:00:00Z"
+      }
+    ],
+    createdDate: "2025-10-02",
+    createdBy: "System",
+    createdAt: "2025-10-02T14:00:00Z",
+    startedAt: "2025-10-03T08:30:00Z",
+    completedAt: null,
+    startedBy: "John Operator"
   }
 ];
 

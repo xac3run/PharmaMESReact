@@ -641,6 +641,7 @@ export default function App() {
                 startBatchProduction={startBatchProduction}
                 executeStep={executeStep}
                 exportBatchPDF={exportBatchPDF}
+                addAuditEntry={addAuditEntry}  // Добавить эту строку!
               />
             )}
 
