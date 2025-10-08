@@ -13,8 +13,8 @@ RUN npm install
 # Копируем весь проект
 COPY . .
 
-# Открываем порт
-EXPOSE 5173
+# Открываем порт 5173
+EXPOSE 3000
 
 # Запускаем dev сервер
 #ENV REACT_APP_API_URL=http://77.233.212.181:3001/api // for API shk
