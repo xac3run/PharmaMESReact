@@ -654,6 +654,8 @@ export default function App() {
                 //setEditingFormula={setEditingFormula}
                 addAuditEntry={addAuditEntry}
                 language={language}
+                showESignature={showESignature}  // Эта строка важна!
+                currentUser={currentUser}
               />
             )}
 

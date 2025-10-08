@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, Save, CheckCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Edit3, Save, CheckCircle, ChevronDown, ChevronUp, Loader2, Lock } from 'lucide-react';
 import { apiClient } from '../api/client';
 
 export default function Formulas({ 
   addAuditEntry,
-  language = 'en'
+  language = 'en',
+  showESignature,
+  currentUser
 }) {
-  console.log('Formulas component loaded!'); // добавьте эту строку
+  console.log('Formulas component loaded with showESignature:', !!showESignature);
+  
   const [formulas, setFormulas] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,6 +17,7 @@ export default function Formulas({
   const [expandedFormula, setExpandedFormula] = useState(null);
   const [editingFormula, setEditingFormula] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [pendingChanges, setPendingChanges] = useState(null);
   
   const t = (key) => {
     const translations = {
@@ -31,7 +35,9 @@ export default function Formulas({
         loading: "Loading...",
         error: "Error loading data",
         save: "Save",
-        cancel: "Cancel"
+        cancel: "Cancel",
+        requiresSignature: "Changes require electronic signature",
+        signAndSave: "Sign & Save Changes"
       },
       ru: {
         formulaManagement: "Управление формулами",
@@ -47,7 +53,9 @@ export default function Formulas({
         loading: "Загрузка...",
         error: "Ошибка загрузки данных",
         save: "Сохранить",
-        cancel: "Отмена"
+        cancel: "Отмена",
+        requiresSignature: "Изменения требуют электронной подписи",
+        signAndSave: "Подписать и сохранить"
       }
     };
     return translations[language]?.[key] || translations['en'][key] || key;
@@ -60,8 +68,7 @@ export default function Formulas({
   }, []);
 
   const loadData = async () => {
-     console.log('📡 loadData started!');
-    console.log('API URL:', 'http://77.233.212.181:3001/api');
+    console.log('📡 loadData started!');
     try {
       setLoading(true);
       setError(null);
@@ -71,8 +78,8 @@ export default function Formulas({
         apiClient.getMaterials()
       ]);
       
-      console.log('Loaded formulas:', formulasData); // добавьте эту строку
-      console.log('Loaded materials:', materialsData); // добавьте эту строку
+      console.log('Loaded formulas:', formulasData);
+      console.log('Loaded materials:', materialsData);
 
       setFormulas(formulasData);
       setMaterials(materialsData);
@@ -113,31 +120,163 @@ export default function Formulas({
   };
 
   const updateFormulaStatus = async (id, status) => {
+    // For critical status changes, require e-signature
+    if (status === "approved" && showESignature) {
+      const formula = formulas.find(f => f.id === id);
+      console.log('🔐 Requesting e-signature for status change...');
+      
+      showESignature(
+        "Formula Status Change",
+        `Change formula ${formula.articleNumber} status to ${status}`,
+        (signature) => {
+          console.log('✅ Status change signature received:', signature);
+          performStatusUpdate(id, status, signature);
+        }
+      );
+    } else {
+      performStatusUpdate(id, status);
+    }
+  };
+
+  const performStatusUpdate = async (id, status, signature = null) => {
     try {
-      const updatedFormula = await apiClient.updateFormulaStatus(id, status);
+      // DEMO: Update locally without API
       setFormulas(prev => prev.map(f => 
-        f.id === id ? updatedFormula : f
+        f.id === id ? { ...f, status } : f
       ));
       
       if (addAuditEntry) {
-        addAuditEntry("Formula Status Changed", `Formula ${updatedFormula.articleNumber} status changed to ${status}`);
+        const formula = formulas.find(f => f.id === id);
+        const auditDetails = signature 
+          ? `Formula ${formula.articleNumber} status changed to ${status} (E-Signed by ${signature.user})`
+          : `Formula ${formula.articleNumber} status changed to ${status}`;
+        addAuditEntry("Formula Status Changed", auditDetails);
       }
     } catch (err) {
       setError(`Failed to update status: ${err.message}`);
     }
   };
 
+  // Check if changes require electronic signature
+  const checkIfChangesRequireSignature = (original, modified) => {
+    if (!original || !modified) {
+      console.log('❌ Missing original or modified formula');
+      return false;
+    }
+    
+    console.log('🔍 Checking signature requirements:', {
+      originalProduct: original.productName,
+      modifiedProduct: modified.productName,
+      originalType: original.productType,
+      modifiedType: modified.productType,
+      originalWeight: original.weightPerUnit,
+      modifiedWeight: modified.weightPerUnit,
+      originalStatus: original.status,
+      modifiedStatus: modified.status
+    });
+    
+    // Check critical field changes
+    if (original.productName !== modified.productName) {
+      console.log('✅ Product name changed - signature required');
+      return true;
+    }
+    
+    if (original.productType !== modified.productType) {
+      console.log('✅ Product type changed - signature required');
+      return true;
+    }
+    
+    if (original.weightPerUnit !== modified.weightPerUnit) {
+      console.log('✅ Weight changed - signature required');
+      return true;
+    }
+    
+    if (original.status === "approved" || modified.status === "approved") {
+      console.log('✅ Status involves approved - signature required');
+      return true;
+    }
+    
+    // Check BOM changes
+    const originalBOM = original.bom || [];
+    const modifiedBOM = modified.bom || [];
+    
+    if (originalBOM.length !== modifiedBOM.length) {
+      console.log('✅ BOM length changed - signature required');
+      return true;
+    }
+    
+    for (let i = 0; i < originalBOM.length; i++) {
+      const origItem = originalBOM[i];
+      const modItem = modifiedBOM[i];
+      
+      if (origItem.materialArticle !== modItem.materialArticle ||
+          origItem.quantity !== modItem.quantity ||
+          origItem.materialType !== modItem.materialType) {
+        console.log('✅ BOM content changed - signature required');
+        return true;
+      }
+    }
+    
+    console.log('❌ No critical changes found');
+    return false;
+  };
+
   const saveFormula = async (formulaId, formulaData) => {
+    console.log('🔘 Save button clicked for formula:', formulaId);
+    console.log('🔘 showESignature function available:', !!showESignature);
+    
+    // Get the original formula from initial state (before any edits)
+    const originalFormula = formulas.find(f => f.id === formulaId);
+    
+    // Create a copy of the original for comparison (without current edits)
+    const originalForComparison = { ...originalFormula };
+    
+    const requiresSignature = checkIfChangesRequireSignature(originalForComparison, formulaData);
+    
+    console.log('🔍 Signature check result:', {
+      requiresSignature,
+      showESignatureAvailable: !!showESignature,
+      formulaId,
+      originalData: originalForComparison?.productName,
+      modifiedData: formulaData?.productName
+    });
+    
+    if (requiresSignature && showESignature) {
+      console.log('🔐 Showing e-signature modal...');
+      
+      showESignature(
+        "Formula Modification",
+        `Modify formula ${formulaData.articleNumber} - Critical changes detected`,
+        (signature) => {
+          console.log('✅ Signature received:', signature);
+          performFormulaSave(formulaId, formulaData, signature);
+        }
+      );
+      return;
+    } else {
+      console.log('❌ No signature required or showESignature missing:', {
+        requiresSignature,
+        hasShowESignature: !!showESignature
+      });
+      performFormulaSave(formulaId, formulaData);
+    }
+  };
+
+  const performFormulaSave = async (formulaId, formulaData, signature = null) => {
     try {
       setSaving(true);
-      const updatedFormula = await apiClient.updateFormula(formulaId, formulaData);
+      
+      // DEMO: Update locally without API call
       setFormulas(prev => prev.map(f => 
-        f.id === formulaId ? updatedFormula : f
+        f.id === formulaId ? { ...f, ...formulaData } : f
       ));
       setEditingFormula(null);
       
       if (addAuditEntry) {
-        addAuditEntry("Formula Updated", `Formula ${updatedFormula.articleNumber} updated`);
+        const auditDetails = signature 
+          ? `Formula ${formulaData.articleNumber} updated (E-Signed by ${signature.user})`
+          : `Formula ${formulaData.articleNumber} updated`;
+        addAuditEntry("Formula Updated", auditDetails);
       }
     } catch (err) {
       setError(`Failed to save formula: ${err.message}`);
@@ -147,19 +286,59 @@ export default function Formulas({
   };
 
   const deleteFormula = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this formula?')) {
-      return;
+    const formula = formulas.find(f => f.id === id);
+    
+    // Require e-signature for deletion of approved formulas
+    if (formula.status === "approved" && showESignature) {
+      console.log('🔐 Requesting e-signature for deletion...');
+      
+      showESignature(
+        "Formula Deletion",
+        `Delete approved formula ${formula.articleNumber}`,
+        (signature) => {
+          console.log('✅ Deletion signature received:', signature);
+          performFormulaDeletion(id, signature);
+        }
+      );
+    } else {
+      if (!window.confirm('Are you sure you want to delete this formula?')) {
+        return;
+      }
+      performFormulaDeletion(id);
     }
+  };
 
+  const performFormulaDeletion = async (id, signature = null) => {
     try {
-      await apiClient.deleteFormula(id);
+      // DEMO: Delete locally without API call
       setFormulas(prev => prev.filter(f => f.id !== id));
       
       if (addAuditEntry) {
-        addAuditEntry("Formula Deleted", `Formula deleted`);
+        const auditDetails = signature 
+          ? `Formula deleted (E-Signed by ${signature.user})`
+          : `Formula deleted`;
+        addAuditEntry("Formula Deleted", auditDetails);
       }
     } catch (err) {
       setError(`Failed to delete formula: ${err.message}`);
+    }
+  };
+
+  // Test e-signature function
+  const testESignature = () => {
+    console.log('🧪 Testing e-signature modal...');
+    if (showESignature) {
+      showESignature(
+        "Test E-Signature",
+        "This is a test of the electronic signature system",
+        (signature) => {
+          console.log('✅ Test signature received:', signature);
+          alert(`Test signature successful! Signed by: ${signature.user}`);
+        }
+      );
+    } else {
+      console.error('❌ showESignature function not available');
+      alert('E-signature function not available');
     }
   };
 
@@ -242,18 +421,28 @@ export default function Formulas({
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">{t('formulaManagement')}</h2>
-        <button 
-          className="btn-primary flex items-center space-x-2"
-          onClick={createNewFormula}
-          disabled={saving}
-        >
-          {saving ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Plus className="w-4 h-4" />
-          )}
-          <span>{t('newFormula')}</span>
-        </button>
+        <div className="flex space-x-2">
+          {/* Test E-Signature Button */}
+          <button 
+            className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded text-sm flex items-center space-x-1"
+            onClick={testESignature}
+          >
+            <Lock className="w-4 h-4" />
+            <span>Test E-Signature</span>
+          </button>
+          <button 
+            className="btn-primary flex items-center space-x-2"
+            onClick={createNewFormula}
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+            <span>{t('newFormula')}</span>
+          </button>
+        </div>
       </div>
       
       <div className="glass-card overflow-hidden">
@@ -270,244 +459,280 @@ export default function Formulas({
             </tr>
           </thead>
           <tbody>
-            {formulas.map((formula, idx) => (
-              <React.Fragment key={formula.id}>
-                <tr className={`border-b hover:bg-white/40 transition-colors ${idx % 2 === 0 ? 'bg-white/20' : ''}`}>
-                  <td className="py-2 px-2 font-mono text-xs">{formula.articleNumber}</td>
-                  <td className="py-2 px-2 text-xs">{formula.productName}</td>
-                  <td className="py-2 px-2 text-xs">{formula.weightPerUnit}mg</td>
-                  <td className="py-2 px-2 text-xs">{formula.productType}</td>
-                  <td className="py-2 px-2 text-xs">{formula.bom?.length || 0} items</td>
-                  <td className="py-2 px-2">
-                    <select
-                      className={`px-2 py-1 rounded text-xs font-semibold ${
-                        formula.status === "approved" ? "bg-green-100 text-green-800" :
-                        formula.status === "review" ? "bg-yellow-100 text-yellow-800" :
-                        "bg-gray-100 text-gray-800"
-                      }`}
-                      value={formula.status}
-                      onChange={(e) => updateFormulaStatus(formula.id, e.target.value)}
-                    >
-                      <option value="draft">Draft</option>
-                      <option value="review">Review</option>
-                      <option value="approved">Approved</option>
-                    </select>
-                  </td>
-                  <td className="py-2 px-2">
-                    <div className="flex space-x-1">
-                      <button
-                        onClick={() => {
-                          if (editingFormula === formula.id) {
-                            // Save formula
-                            saveFormula(formula.id, formula);
-                          } else {
-                            // Start editing
-                            setEditingFormula(formula.id);
-                          }
-                        }}
-                        className="p-1 hover:bg-blue-100 rounded text-blue-600"
-                        title={editingFormula === formula.id ? "Save" : "Edit"}
-                        disabled={saving}
-                      >
-                        {saving && editingFormula === formula.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : editingFormula === formula.id ? (
-                          <Save className="w-3 h-3" />
-                        ) : (
-                          <Edit3 className="w-3 h-3" />
+            {formulas.map((formula, idx) => {
+              // For signature requirements, compare against original state
+              const originalFormula = formulas.find(f => f.id === formula.id && editingFormula !== formula.id) || formula;
+              const requiresSignature = editingFormula === formula.id && 
+                checkIfChangesRequireSignature(originalFormula, formula);
+              
+              return (
+                <React.Fragment key={formula.id}>
+                  <tr className={`border-b hover:bg-white/40 transition-colors ${idx % 2 === 0 ? 'bg-white/20' : ''}`}>
+                    <td className="py-2 px-2 font-mono text-xs">{formula.articleNumber}</td>
+                    <td className="py-2 px-2 text-xs">{formula.productName}</td>
+                    <td className="py-2 px-2 text-xs">{formula.weightPerUnit}mg</td>
+                    <td className="py-2 px-2 text-xs">{formula.productType}</td>
+                    <td className="py-2 px-2 text-xs">{formula.bom?.length || 0} items</td>
+                    <td className="py-2 px-2">
+                      <div className="flex items-center space-x-1">
+                        <select
+                          className={`px-2 py-1 rounded text-xs font-semibold ${
+                            formula.status === "approved" ? "bg-green-100 text-green-800" :
+                            formula.status === "review" ? "bg-yellow-100 text-yellow-800" :
+                            "bg-gray-100 text-gray-800"
+                          }`}
+                          value={formula.status}
+                          onChange={(e) => updateFormulaStatus(formula.id, e.target.value)}
+                        >
+                          <option value="draft">Draft</option>
+                          <option value="review">Review</option>
+                          <option value="approved">Approved</option>
+                        </select>
+                        {formula.status === "approved" && (
+                          <Lock className="w-3 h-3 text-green-600" title="Approved - Changes require e-signature" />
                         )}
-                      </button>
-                      <button
-                        onClick={() => setExpandedFormula(expandedFormula === formula.id ? null : formula.id)}
-                        className="p-1 hover:bg-gray-200 rounded"
-                        title="Details"
-                      >
-                        {expandedFormula === formula.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </button>
-                      <button
-                        onClick={() => deleteFormula(formula.id)}
-                        className="p-1 hover:bg-red-100 rounded text-red-600"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                
-                {(expandedFormula === formula.id || editingFormula === formula.id) && (
-                  <tr>
-                    <td colSpan="7" className="py-3 px-3 bg-white/60">
-                      {editingFormula === formula.id ? (
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-4 gap-2">
-                            <div>
-                              <label className="block text-xs font-semibold mb-1">Article Number</label>
-                              <input
-                                className="border rounded px-2 py-1 w-full text-xs"
-                                value={formula.articleNumber}
-                                onChange={(e) => updateEditingFormula('articleNumber', e.target.value)}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold mb-1">Product Name</label>
-                              <input
-                                className="border rounded px-2 py-1 w-full text-xs"
-                                value={formula.productName}
-                                onChange={(e) => updateEditingFormula('productName', e.target.value)}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold mb-1">Weight/Unit (mg)</label>
-                              <input
-                                type="number"
-                                className="border rounded px-2 py-1 w-full text-xs"
-                                value={formula.weightPerUnit}
-                                onChange={(e) => updateEditingFormula('weightPerUnit', parseFloat(e.target.value) || 0)}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold mb-1">Type</label>
-                              <select
-                                className="border rounded px-2 py-1 w-full text-xs"
-                                value={formula.productType}
-                                onChange={(e) => updateEditingFormula('productType', e.target.value)}
-                              >
-                                <option value="dosing">Dosing</option>
-                                <option value="packaging">Packaging</option>
-                                <option value="other">Other</option>
-                              </select>
-                            </div>
-                          </div>
-                          
-                          <div>
-                            <div className="flex justify-between items-center mb-2">
-                              <label className="font-semibold text-xs">Bill of Materials</label>
-                              <button
-                                onClick={addBomItem}
-                                className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
-                              >
-                                + Add
-                              </button>
+                      </div>
+                    </td>
+                    <td className="py-2 px-2">
+                      <div className="flex space-x-1">
+                        <button
+                          onClick={() => {
+                            console.log('🔘 Edit/Save button clicked for formula:', formula.id);
+                            console.log('🔘 Current editing mode:', editingFormula === formula.id);
+                            
+                            if (editingFormula === formula.id) {
+                              console.log('🔘 Calling saveFormula with data:', formula);
+                              saveFormula(formula.id, formula);
+                            } else {
+                              console.log('🔘 Starting edit mode');
+                              setEditingFormula(formula.id);
+                            }
+                          }}
+                          className={`p-1 rounded text-xs flex items-center space-x-1 ${
+                            requiresSignature 
+                              ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                              : 'hover:bg-blue-100 text-blue-600'
+                          }`}
+                          title={editingFormula === formula.id ? (requiresSignature ? "Requires E-Signature" : "Save") : "Edit"}
+                          disabled={saving}
+                        >
+                          {saving && editingFormula === formula.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : editingFormula === formula.id ? (
+                            <>
+                              {requiresSignature && <Lock className="w-3 h-3" />}
+                              <Save className="w-3 h-3" />
+                            </>
+                          ) : (
+                            <Edit3 className="w-3 h-3" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setExpandedFormula(expandedFormula === formula.id ? null : formula.id)}
+                          className="p-1 hover:bg-gray-200 rounded"
+                          title="Details"
+                        >
+                          {expandedFormula === formula.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => deleteFormula(formula.id)}
+                          className="p-1 hover:bg-red-100 rounded text-red-600"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  
+                  {(expandedFormula === formula.id || editingFormula === formula.id) && (
+                    <tr>
+                      <td colSpan="7" className="py-3 px-3 bg-white/60">
+                        {editingFormula === formula.id ? (
+                          <div className="space-y-3">
+                            {/* Show warning if changes require signature */}
+                            {requiresSignature && (
+                              <div className="bg-orange-50 border border-orange-200 rounded p-2 flex items-center space-x-2">
+                                <Lock className="w-4 h-4 text-orange-600" />
+                                <span className="text-xs text-orange-800">{t('requiresSignature')}</span>
+                              </div>
+                            )}
+                            
+                            <div className="grid grid-cols-4 gap-2">
+                              <div>
+                                <label className="block text-xs font-semibold mb-1">Article Number</label>
+                                <input
+                                  className="border rounded px-2 py-1 w-full text-xs"
+                                  value={formula.articleNumber}
+                                  onChange={(e) => updateEditingFormula('articleNumber', e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold mb-1">Product Name</label>
+                                <input
+                                  className="border rounded px-2 py-1 w-full text-xs"
+                                  value={formula.productName}
+                                  onChange={(e) => updateEditingFormula('productName', e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold mb-1">Weight/Unit (mg)</label>
+                                <input
+                                  type="number"
+                                  className="border rounded px-2 py-1 w-full text-xs"
+                                  value={formula.weightPerUnit}
+                                  onChange={(e) => updateEditingFormula('weightPerUnit', parseFloat(e.target.value) || 0)}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold mb-1">Type</label>
+                                <select
+                                  className="border rounded px-2 py-1 w-full text-xs"
+                                  value={formula.productType}
+                                  onChange={(e) => updateEditingFormula('productType', e.target.value)}
+                                >
+                                  <option value="dosing">Dosing</option>
+                                  <option value="packaging">Packaging</option>
+                                  <option value="other">Other</option>
+                                </select>
+                              </div>
                             </div>
                             
-                            <div className="space-y-1">
-                              {(formula.bom || []).map((bomItem, bomIndex) => (
-                                <div key={bomItem.id || bomIndex} className="border rounded p-2 bg-white/40">
-                                  <div className="grid grid-cols-7 gap-2 items-end">
-                                    <div className="col-span-2">
-                                      <label className="block text-xs mb-1">Material</label>
-                                      <select
-                                        className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.materialArticle}
-                                        onChange={(e) => updateEditingBom(bomIndex, 'materialArticle', e.target.value)}
-                                      >
-                                        <option value="">Select</option>
-                                        {materials.map(m => (
-                                          <option key={m.id} value={m.articleNumber}>
-                                            {m.articleNumber} - {m.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <label className="block text-xs mb-1">Type</label>
-                                      <select
-                                        className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.materialType || "raw_material"}
-                                        onChange={(e) => updateEditingBom(bomIndex, 'materialType', e.target.value)}
-                                      >
-                                        <option value="raw_material">Raw</option>
-                                        <option value="intermediate">Inter</option>
-                                        <option value="packaging">Pack</option>
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <label className="block text-xs mb-1">Qty</label>
-                                      <input
-                                        type="number"
-                                        className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.quantity}
-                                        onChange={(e) => updateEditingBom(bomIndex, 'quantity', parseFloat(e.target.value) || 0)}
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-xs mb-1">Min</label>
-                                      <input
-                                        type="number"
-                                        className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.minQuantity || 0}
-                                        onChange={(e) => updateEditingBom(bomIndex, 'minQuantity', parseFloat(e.target.value) || 0)}
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-xs mb-1">Max</label>
-                                      <input
-                                        type="number"
-                                        className="border rounded px-2 py-1 w-full text-xs"
-                                        value={bomItem.maxQuantity || 0}
-                                        onChange={(e) => updateEditingBom(bomIndex, 'maxQuantity', parseFloat(e.target.value) || 0)}
-                                      />
-                                    </div>
-                                    <button
-                                      onClick={() => removeBomItem(bomIndex)}
-                                      className="text-red-600 hover:bg-red-100 p-1 rounded"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => saveFormula(formula.id, formula)}
-                              className="btn-primary text-xs px-3 py-1"
-                              disabled={saving}
-                            >
-                              {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                              {t('save')}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingFormula(null);
-                                loadData(); // Reload to cancel changes
-                              }}
-                              className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
-                            >
-                              {t('cancel')}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs space-y-2">
-                          <div className="grid grid-cols-4 gap-2">
-                            <div><span className="font-semibold">Version:</span> {formula.version}</div>
-                            <div><span className="font-semibold">Weight:</span> {formula.weightPerUnit}mg</div>
-                            <div><span className="font-semibold">Type:</span> {formula.productType}</div>
-                            <div><span className="font-semibold">BOM Items:</span> {formula.bom?.length || 0}</div>
-                          </div>
-                          {formula.bom && formula.bom.length > 0 && (
                             <div>
-                              <span className="font-semibold">Materials:</span>
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {formula.bom.map((b, index) => (
-                                  <span key={b.id || index} className="bg-gray-100 px-2 py-0.5 rounded text-xs">
-                                    {b.materialArticle}: {b.quantity}{b.unit}
-                                  </span>
+                              <div className="flex justify-between items-center mb-2">
+                                <label className="font-semibold text-xs">Bill of Materials</label>
+                                <button
+                                  onClick={addBomItem}
+                                  className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+                                >
+                                  + Add
+                                </button>
+                              </div>
+                              
+                              <div className="space-y-1">
+                                {(formula.bom || []).map((bomItem, bomIndex) => (
+                                  <div key={bomItem.id || bomIndex} className="border rounded p-2 bg-white/40">
+                                    <div className="grid grid-cols-7 gap-2 items-end">
+                                      <div className="col-span-2">
+                                        <label className="block text-xs mb-1">Material</label>
+                                        <select
+                                          className="border rounded px-2 py-1 w-full text-xs"
+                                          value={bomItem.materialArticle}
+                                          onChange={(e) => updateEditingBom(bomIndex, 'materialArticle', e.target.value)}
+                                        >
+                                          <option value="">Select</option>
+                                          {materials.map(m => (
+                                            <option key={m.id} value={m.articleNumber}>
+                                              {m.articleNumber} - {m.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs mb-1">Type</label>
+                                        <select
+                                          className="border rounded px-2 py-1 w-full text-xs"
+                                          value={bomItem.materialType || "raw_material"}
+                                          onChange={(e) => updateEditingBom(bomIndex, 'materialType', e.target.value)}
+                                        >
+                                          <option value="raw_material">Raw</option>
+                                          <option value="intermediate">Inter</option>
+                                          <option value="packaging">Pack</option>
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs mb-1">Qty</label>
+                                        <input
+                                          type="number"
+                                          className="border rounded px-2 py-1 w-full text-xs"
+                                          value={bomItem.quantity}
+                                          onChange={(e) => updateEditingBom(bomIndex, 'quantity', parseFloat(e.target.value) || 0)}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs mb-1">Min</label>
+                                        <input
+                                          type="number"
+                                          className="border rounded px-2 py-1 w-full text-xs"
+                                          value={bomItem.minQuantity || 0}
+                                          onChange={(e) => updateEditingBom(bomIndex, 'minQuantity', parseFloat(e.target.value) || 0)}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs mb-1">Max</label>
+                                        <input
+                                          type="number"
+                                          className="border rounded px-2 py-1 w-full text-xs"
+                                          value={bomItem.maxQuantity || 0}
+                                          onChange={(e) => updateEditingBom(bomIndex, 'maxQuantity', parseFloat(e.target.value) || 0)}
+                                        />
+                                      </div>
+                                      <button
+                                        onClick={() => removeBomItem(bomIndex)}
+                                        className="text-red-600 hover:bg-red-100 p-1 rounded"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 ))}
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
+                            
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => saveFormula(formula.id, formula)}
+                                className={`text-xs px-3 py-1 flex items-center space-x-1 ${
+                                  requiresSignature 
+                                    ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                    : 'btn-primary'
+                                }`}
+                                disabled={saving}
+                              >
+                                {saving && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
+                                {requiresSignature && <Lock className="w-3 h-3" />}
+                                <span>{requiresSignature ? t('signAndSave') : t('save')}</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingFormula(null);
+                                  setPendingChanges(null);
+                                  loadData(); // Reload to cancel changes
+                                }}
+                                className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
+                              >
+                                {t('cancel')}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs space-y-2">
+                            <div className="grid grid-cols-4 gap-2">
+                              <div><span className="font-semibold">Version:</span> {formula.version}</div>
+                              <div><span className="font-semibold">Weight:</span> {formula.weightPerUnit}mg</div>
+                              <div><span className="font-semibold">Type:</span> {formula.productType}</div>
+                              <div><span className="font-semibold">BOM Items:</span> {formula.bom?.length || 0}</div>
+                            </div>
+                            {formula.bom && formula.bom.length > 0 && (
+                              <div>
+                                <span className="font-semibold">Materials:</span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {formula.bom.map((b, index) => (
+                                    <span key={b.id || index} className="bg-gray-100 px-2 py-0.5 rounded text-xs">
+                                      {b.materialArticle}: {b.quantity}{b.unit}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
