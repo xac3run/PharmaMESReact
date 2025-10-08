@@ -17,35 +17,49 @@ class ApiClient {
   }
 
   async request(endpoint, options = {}) {
-    const url = `${API_BASE_URL}${endpoint}`;
-    
-    const config = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.token && { Authorization: `Bearer ${this.token}` }),
-        ...options.headers,
-      },
-      ...options,
-    };
+  const url = `${API_BASE_URL}${endpoint}`;
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(this.token && { Authorization: `Bearer ${this.token}` }),
+      ...options.headers,
+    },
+    ...options,
+  };
 
-    if (config.body && typeof config.body === 'object') {
-      config.body = JSON.stringify(config.body);
-    }
-
-    try {
-      const response = await fetch(url, config);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('API request failed:', error);
-      throw error;
-    }
+  if (config.body && typeof config.body === 'object') {
+    config.body = JSON.stringify(config.body);
   }
+
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    // Проверяем, есть ли контент для парсинга
+    const contentType = response.headers.get('content-type');
+    const hasContent = response.headers.get('content-length') !== '0';
+    
+    if (contentType && contentType.includes('application/json') && hasContent) {
+      try {
+        const data = await response.json();
+        return data;
+      } catch (jsonError) {
+        console.warn('Failed to parse JSON response:', jsonError);
+        return null; // Возвращаем null если JSON не получилось распарсить
+      }
+    } else {
+      // Для DELETE запросов и других без JSON ответа
+      return null;
+    }
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
+}
 
   // Auth methods
   async login(username, password) {
@@ -147,12 +161,14 @@ class ApiClient {
     });
   }
 
-  async deleteFormula(id) {
-    console.log('Deleting formula:', id);
-    return this.request(`/formulas/${id}`, {
-      method: 'DELETE',
-    });
-  }
+ async deleteFormula(id) {
+  console.log('Deleting formula:', id);
+  const result = await this.request(`/formulas/${id}`, {
+    method: 'DELETE',
+  });
+  // DELETE обычно не возвращает данные, поэтому возвращаем успешный результат
+  return { success: true };
+}
 
   // Materials methods
   async getMaterials() {

@@ -49,7 +49,8 @@ export class FormulasController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.formulasService.remove(id);
-  }
+async remove(@Param('id') id: string) {
+  await this.formulasService.remove(id);
+  return { message: 'Formula deleted successfully', id };
+}
 }

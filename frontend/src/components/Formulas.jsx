@@ -18,6 +18,7 @@ export default function Formulas({
   const [editingFormula, setEditingFormula] = useState(null);
   const [saving, setSaving] = useState(false);
   const [pendingChanges, setPendingChanges] = useState(null);
+  const [originalFormulas, setOriginalFormulas] = useState({}); // Для отслеживания оригинальных данных
   
   const t = (key) => {
     const translations = {
@@ -83,6 +84,14 @@ export default function Formulas({
 
       setFormulas(formulasData);
       setMaterials(materialsData);
+      
+      // Сохраняем оригинальные данные для сравнения
+      const originalData = {};
+      formulasData.forEach(formula => {
+        originalData[formula.id] = JSON.parse(JSON.stringify(formula));
+      });
+      setOriginalFormulas(originalData);
+      
     } catch (err) {
       setError(err.message);
       console.error('Failed to load data:', err);
@@ -101,12 +110,18 @@ export default function Formulas({
         weightPerUnit: 0,
         productType: "dosing",
         status: "draft",
-        version: "0.1",
+        version: "1.0",
         bom: []
       };
 
       const createdFormula = await apiClient.createFormula(newFormulaData);
+      
+      // Обновляем состояние
       setFormulas(prev => [createdFormula, ...prev]);
+      setOriginalFormulas(prev => ({
+        ...prev,
+        [createdFormula.id]: JSON.parse(JSON.stringify(createdFormula))
+      }));
       setEditingFormula(createdFormula.id);
       
       if (addAuditEntry) {
@@ -140,9 +155,12 @@ export default function Formulas({
 
   const performStatusUpdate = async (id, status, signature = null) => {
     try {
-      // DEMO: Update locally without API
+      // Вызываем API для обновления статуса
+      const updatedFormula = await apiClient.updateFormulaStatus(id, status);
+      
+      // Обновляем локальное состояние
       setFormulas(prev => prev.map(f => 
-        f.id === id ? { ...f, status } : f
+        f.id === id ? updatedFormula : f
       ));
       
       if (addAuditEntry) {
@@ -186,7 +204,7 @@ export default function Formulas({
       return true;
     }
     
-    if (original.weightPerUnit !== modified.weightPerUnit) {
+    if (Number(original.weightPerUnit) !== Number(modified.weightPerUnit)) {
       console.log('✅ Weight changed - signature required');
       return true;
     }
@@ -210,7 +228,7 @@ export default function Formulas({
       const modItem = modifiedBOM[i];
       
       if (origItem.materialArticle !== modItem.materialArticle ||
-          origItem.quantity !== modItem.quantity ||
+          Number(origItem.quantity) !== Number(modItem.quantity) ||
           origItem.materialType !== modItem.materialType) {
         console.log('✅ BOM content changed - signature required');
         return true;
@@ -221,23 +239,27 @@ export default function Formulas({
     return false;
   };
 
+  // Function to create next version number
+  const getNextVersion = (currentVersion) => {
+    const parts = currentVersion.split('.');
+    const majorVersion = parseInt(parts[0]) || 1;
+    const minorVersion = parseInt(parts[1]) || 0;
+    return `${majorVersion}.${minorVersion + 1}`;
+  };
+
   const saveFormula = async (formulaId, formulaData) => {
     console.log('🔘 Save button clicked for formula:', formulaId);
     console.log('🔘 showESignature function available:', !!showESignature);
     
     // Get the original formula from initial state (before any edits)
-    const originalFormula = formulas.find(f => f.id === formulaId);
+    const originalFormula = originalFormulas[formulaId];
     
-    // Create a copy of the original for comparison (without current edits)
-    const originalForComparison = { ...originalFormula };
-    
-    const requiresSignature = checkIfChangesRequireSignature(originalForComparison, formulaData);
+    const requiresSignature = checkIfChangesRequireSignature(originalFormula, formulaData);
     
     console.log('🔍 Signature check result:', {
       requiresSignature,
       showESignatureAvailable: !!showESignature,
-      formulaId,
-      originalData: originalForComparison?.productName,
+      originalData: originalFormula?.productName,
       modifiedData: formulaData?.productName
     });
     
@@ -246,7 +268,7 @@ export default function Formulas({
       
       showESignature(
         "Formula Modification",
-        `Modify formula ${formulaData.articleNumber} - Critical changes detected`,
+        `Modify formula ${formulaData.articleNumber} - Critical changes detected. This will create version ${getNextVersion(formulaData.version)}`,
         (signature) => {
           console.log('✅ Signature received:', signature);
           performFormulaSave(formulaId, formulaData, signature);
@@ -266,20 +288,43 @@ export default function Formulas({
     try {
       setSaving(true);
       
-      // DEMO: Update locally without API call
+      // Determine if we need to increment version
+      const originalFormula = originalFormulas[formulaId];
+      const requiresVersioning = checkIfChangesRequireSignature(originalFormula, formulaData);
+      
+      let updateData = { ...formulaData };
+      
+      // If signature is required, increment version
+      if (requiresVersioning && signature) {
+        updateData.version = getNextVersion(formulaData.version);
+        console.log('📝 Creating new version:', updateData.version);
+      }
+      
+      // Call API to update formula
+      const updatedFormula = await apiClient.updateFormula(formulaId, updateData);
+      
+      // Update local state
       setFormulas(prev => prev.map(f => 
-        f.id === formulaId ? { ...f, ...formulaData } : f
+        f.id === formulaId ? updatedFormula : f
       ));
+      
+      // Update original formulas cache
+      setOriginalFormulas(prev => ({
+        ...prev,
+        [formulaId]: JSON.parse(JSON.stringify(updatedFormula))
+      }));
+      
       setEditingFormula(null);
       
       if (addAuditEntry) {
         const auditDetails = signature 
-          ? `Formula ${formulaData.articleNumber} updated (E-Signed by ${signature.user})`
-          : `Formula ${formulaData.articleNumber} updated`;
+          ? `Formula ${updateData.articleNumber} updated to v${updateData.version} (E-Signed by ${signature.user})`
+          : `Formula ${updateData.articleNumber} updated`;
         addAuditEntry("Formula Updated", auditDetails);
       }
     } catch (err) {
       setError(`Failed to save formula: ${err.message}`);
+      console.error('Save error:', err);
     } finally {
       setSaving(false);
     }
@@ -310,8 +355,18 @@ export default function Formulas({
 
   const performFormulaDeletion = async (id, signature = null) => {
     try {
-      // DEMO: Delete locally without API call
+      // Call API to delete formula
+      await apiClient.deleteFormula(id);
+      
+      // Update local state
       setFormulas(prev => prev.filter(f => f.id !== id));
+      
+      // Remove from original formulas cache
+      setOriginalFormulas(prev => {
+        const newOriginals = { ...prev };
+        delete newOriginals[id];
+        return newOriginals;
+      });
       
       if (addAuditEntry) {
         const auditDetails = signature 
@@ -321,13 +376,18 @@ export default function Formulas({
       }
     } catch (err) {
       setError(`Failed to delete formula: ${err.message}`);
+      console.error('Delete error:', err);
     }
   };
 
   // Test e-signature function
   const testESignature = () => {
     console.log('🧪 Testing e-signature modal...');
-    if (showESignature) {
+    console.log('🧪 showESignature prop:', showESignature);
+    console.log('🧪 typeof showESignature:', typeof showESignature);
+    
+    if (showESignature && typeof showESignature === 'function') {
+      console.log('🧪 Calling showESignature...');
       showESignature(
         "Test E-Signature",
         "This is a test of the electronic signature system",
@@ -337,8 +397,8 @@ export default function Formulas({
         }
       );
     } else {
-      console.error('❌ showESignature function not available');
-      alert('E-signature function not available');
+      console.error('❌ showESignature function not available or not a function');
+      alert(`E-signature function not available. Type: ${typeof showESignature}`);
     }
   };
 
@@ -695,9 +755,15 @@ export default function Formulas({
                               </button>
                               <button
                                 onClick={() => {
+                                  // Отменяем изменения и возвращаем оригинальные данные
+                                  const originalData = originalFormulas[formula.id];
+                                  if (originalData) {
+                                    setFormulas(prev => prev.map(f => 
+                                      f.id === formula.id ? { ...originalData } : f
+                                    ));
+                                  }
                                   setEditingFormula(null);
                                   setPendingChanges(null);
-                                  loadData(); // Reload to cancel changes
                                 }}
                                 className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
                               >
