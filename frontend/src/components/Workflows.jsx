@@ -265,18 +265,27 @@ export default function Workflows({
                                           <option value="qc">QC</option>
                                         </select>
                                       </div>
-                                      <div>
+                                    <div>
                                         <label className="block text-xs mb-1">Equipment</label>
                                         <select
                                           className="border rounded px-2 py-1 w-full text-xs"
                                           value={step.equipmentId || ""}
                                           onChange={(e) => {
+                                            const selectedEquipment = equipment.find(eq => eq.id === parseInt(e.target.value));
                                             setWorkflows(prev => prev.map(w => 
                                               w.id === wf.id 
                                                 ? {
                                                     ...w,
                                                     steps: w.steps.map(s => 
-                                                      s.id === step.id ? {...s, equipmentId: parseInt(e.target.value) || null} : s
+                                                      s.id === step.id ? {
+                                                        ...s, 
+                                                        equipmentId: parseInt(e.target.value) || null,
+                                                        equipmentRequirements: selectedEquipment ? {
+                                                          status: 'operational',
+                                                          calibrationStatus: 'valid',
+                                                          requiredParameters: selectedEquipment.customParameters?.map(p => p.name) || []
+                                                        } : null
+                                                      } : s
                                                     )
                                                   }
                                                 : w
@@ -284,10 +293,20 @@ export default function Workflows({
                                           }}
                                         >
                                           <option value="">None</option>
-                                          {equipment.map(eq => (
-                                            <option key={eq.id} value={eq.id}>{eq.name}</option>
+                                          {equipment.filter(eq => eq.status === 'operational').map(eq => (
+                                            <option key={eq.id} value={eq.id}>
+                                              {eq.name} ({eq.class}/{eq.subclass}) - {eq.status}
+                                            </option>
                                           ))}
                                         </select>
+                                        {step.equipmentId && equipment.find(eq => eq.id === step.equipmentId) && (
+                                          <div className="mt-1 text-xs text-gray-600">
+                                            Status: {equipment.find(eq => eq.id === step.equipmentId)?.status}
+                                            {equipment.find(eq => eq.id === step.equipmentId)?.calibrationStatus && 
+                                              ` | Cal: ${equipment.find(eq => eq.id === step.equipmentId)?.calibrationStatus}`
+                                            }
+                                          </div>
+                                        )}
                                       </div>
                                       <div>
                                         <label className="block text-xs mb-1">Station</label>

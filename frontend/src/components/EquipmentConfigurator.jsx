@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Edit3, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Edit3, Save, ChevronDown, ChevronUp, X } from 'lucide-react';
 
 export default function EquipmentConfigurator({ 
   equipmentClasses,
@@ -63,7 +63,10 @@ export default function EquipmentConfigurator({
       lastBatch: null,
       location: "TBD",
       globalParameters: {},
-      customParameters: []
+      customParameters: [],
+      calibrationStatus: "valid",
+      nextCalibrationDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
+      operationalLimits: {}
     };
     setEquipment(prev => [...prev, newEquipment]);
     addAuditEntry("Equipment Created", `${newEquipment.name} created`);
@@ -82,13 +85,31 @@ export default function EquipmentConfigurator({
           ...eq,
           customParameters: [
             ...(eq.customParameters || []),
-            { name: paramName, type: paramType || 'text', value: paramValue || '' }
+            { 
+              name: paramName, 
+              type: paramType || 'text', 
+              value: paramValue || '',
+              unit: paramType === 'number' ? prompt("Enter unit (optional):") || '' : '',
+              minValue: paramType === 'number' ? parseFloat(prompt("Enter min value (optional):") || '0') : null,
+              maxValue: paramType === 'number' ? parseFloat(prompt("Enter max value (optional):") || '100') : null
+            }
           ]
         };
       }
       return eq;
     }));
     addAuditEntry("Equipment Parameter Added", `Parameter ${paramName} added to equipment`);
+  };
+
+  const updateEquipmentField = (equipmentId, field, value) => {
+    setEquipment(prev => prev.map(eq => 
+      eq.id === equipmentId ? { ...eq, [field]: value } : eq
+    ));
+  };
+
+  const saveEquipmentChanges = (equipmentId) => {
+    setEditingEquipment(null);
+    addAuditEntry("Equipment Updated", `Equipment configuration updated`);
   };
 
   return (
@@ -194,6 +215,7 @@ export default function EquipmentConfigurator({
               <th className="text-left py-2 px-2 font-semibold text-xs">Subclass</th>
               <th className="text-left py-2 px-2 font-semibold text-xs">Status</th>
               <th className="text-left py-2 px-2 font-semibold text-xs">Location</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Calibration</th>
               <th className="text-left py-2 px-2 font-semibold text-xs">Parameters</th>
               <th className="text-left py-2 px-2 font-semibold text-xs">Actions</th>
             </tr>
@@ -208,12 +230,23 @@ export default function EquipmentConfigurator({
                   <td className="py-2 px-2 text-xs">
                     <span className={`px-2 py-1 rounded text-xs ${
                       eq.status === 'operational' ? 'bg-green-100 text-green-800' :
-                      'bg-yellow-100 text-yellow-800'
+                      eq.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
+                      eq.status === 'calibration' ? 'bg-blue-100 text-blue-800' :
+                      'bg-red-100 text-red-800'
                     }`}>
                       {eq.status}
                     </span>
                   </td>
                   <td className="py-2 px-2 text-xs">{eq.location}</td>
+                  <td className="py-2 px-2 text-xs">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      eq.calibrationStatus === 'valid' ? 'bg-green-100 text-green-800' :
+                      eq.calibrationStatus === 'due' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {eq.calibrationStatus}
+                    </span>
+                  </td>
                   <td className="py-2 px-2 text-xs">
                     {Object.keys(eq.globalParameters).length + (eq.customParameters?.length || 0)} params
                   </td>
@@ -237,20 +270,16 @@ export default function EquipmentConfigurator({
 
                 {(expandedEquipment === eq.id || editingEquipment === eq.id) && (
                   <tr>
-                    <td colSpan="7" className="py-3 px-3 bg-white/60">
+                    <td colSpan="8" className="py-3 px-3 bg-white/60">
                       <div className="space-y-3">
                         {editingEquipment === eq.id && (
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-4 gap-2 mb-4">
                             <div>
                               <label className="block text-xs font-semibold mb-1">Name</label>
                               <input
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={eq.name}
-                                onChange={(e) => {
-                                  setEquipment(prev => prev.map(e => 
-                                    e.id === eq.id ? {...e, name: e.target.value} : e
-                                  ));
-                                }}
+                                onChange={(e) => updateEquipmentField(eq.id, 'name', e.target.value)}
                               />
                             </div>
                             <div>
@@ -258,16 +287,13 @@ export default function EquipmentConfigurator({
                               <select
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={eq.status}
-                                onChange={(e) => {
-                                  setEquipment(prev => prev.map(e => 
-                                    e.id === eq.id ? {...e, status: e.target.value} : e
-                                  ));
-                                }}
+                                onChange={(e) => updateEquipmentField(eq.id, 'status', e.target.value)}
                               >
                                 <option value="operational">Operational</option>
                                 <option value="maintenance">Maintenance</option>
                                 <option value="calibration">Calibration</option>
                                 <option value="cleaning">Cleaning</option>
+                                <option value="out_of_order">Out of Order</option>
                               </select>
                             </div>
                             <div>
@@ -275,19 +301,27 @@ export default function EquipmentConfigurator({
                               <input
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={eq.location}
-                                onChange={(e) => {
-                                  setEquipment(prev => prev.map(e => 
-                                    e.id === eq.id ? {...e, location: e.target.value} : e
-                                  ));
-                                }}
+                                onChange={(e) => updateEquipmentField(eq.id, 'location', e.target.value)}
                               />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold mb-1">Calibration Status</label>
+                              <select
+                                className="border rounded px-2 py-1 w-full text-xs"
+                                value={eq.calibrationStatus || 'valid'}
+                                onChange={(e) => updateEquipmentField(eq.id, 'calibrationStatus', e.target.value)}
+                              >
+                                <option value="valid">Valid</option>
+                                <option value="due">Due</option>
+                                <option value="expired">Expired</option>
+                              </select>
                             </div>
                           </div>
                         )}
 
                         <div>
                           <div className="flex justify-between items-center mb-2">
-                            <p className="text-xs font-semibold">Custom Parameters:</p>
+                            <p className="text-xs font-semibold">Parameters & Limits:</p>
                             {editingEquipment === eq.id && (
                               <button
                                 onClick={() => addCustomParameter(eq.id)}
@@ -297,7 +331,7 @@ export default function EquipmentConfigurator({
                               </button>
                             )}
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="grid grid-cols-3 gap-2 text-xs">
                             {Object.entries(eq.globalParameters).map(([key, value]) => (
                               <div key={key} className="bg-gray-50 px-2 py-1 rounded">
                                 <span className="font-semibold">{key}:</span> {Array.isArray(value) ? value.join('-') : value}
@@ -306,10 +340,39 @@ export default function EquipmentConfigurator({
                             {eq.customParameters?.map((param, pidx) => (
                               <div key={pidx} className="bg-blue-50 px-2 py-1 rounded">
                                 <span className="font-semibold">{param.name}:</span> {param.value}
+                                {param.unit && <span className="text-gray-500"> {param.unit}</span>}
+                                {param.minValue !== null && param.maxValue !== null && (
+                                  <div className="text-xs text-gray-500">
+                                    Range: {param.minValue} - {param.maxValue}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
                         </div>
+
+                        {eq.currentBatch && (
+                          <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                            <p className="text-xs font-semibold">Currently Processing: Batch {eq.currentBatch}</p>
+                          </div>
+                        )}
+
+                        {editingEquipment === eq.id && (
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => saveEquipmentChanges(eq.id)}
+                              className="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                            >
+                              Save Changes
+                            </button>
+                            <button
+                              onClick={() => setEditingEquipment(null)}
+                              className="text-xs bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>

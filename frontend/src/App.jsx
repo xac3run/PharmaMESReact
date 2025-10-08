@@ -4,8 +4,7 @@ import {
   LayoutDashboard, Beaker, FileText, GitBranch, Settings, Users, 
   LogIn, LogOut, Package, Clipboard, Monitor, Wrench, AlertTriangle,
   Book, TrendingUp, GitMerge, Shield, Droplet, Menu, X, ChevronLeft,
-  FileCheck, Calculator, Lock,
-  MessageSquare, Thermometer
+  FileCheck, Calculator, Lock, MessageSquare, Thermometer
 } from "lucide-react";
 
 // Import components
@@ -22,7 +21,7 @@ import SettingsComponent from "./components/Settings";
 import DeviationManagement from "./components/DeviationManagement";
 import ComplaintHandling from "./components/ComplaintHandling";
 
-// Import NEW GMP components
+// GMP Modules
 import BatchRelease from "./components/BatchRelease";
 import DataIntegrityMonitor from "./components/DataIntegrityMonitor";
 import YieldReconciliation from "./components/YieldReconciliation";
@@ -36,7 +35,7 @@ import GenealogyTracker from "./components/GenealogyTracker";
 import SOPManagement from "./components/SOPManagement";
 import EnvironmentalMonitoring from "./components/EnvironmentalMonitoring";
 
-// Import demo data
+// Demo data
 import {
   initialBatches,
   initialFormulas,
@@ -54,18 +53,17 @@ import {
   initialEquipmentLogs,
   initialDeviations,
   initialComplaints,
-  // ... existing
   initialSOPs,
   initialEnvRecords
 } from "./data/demoData";
 
 export default function App() {
+  // ---------------- STATE ----------------
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [language, setLanguage] = useState("en");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  
-  // State management
+
   const [batches, setBatches] = useState(initialBatches);
   const [formulas, setFormulas] = useState(initialFormulas);
   const [materials, setMaterials] = useState(initialMaterials);
@@ -86,33 +84,41 @@ export default function App() {
   const [sops, setSops] = useState(initialSOPs);
   const [envRecords, setEnvRecords] = useState(initialEnvRecords);
 
-  // UI state
   const [expandedBatch, setExpandedBatch] = useState(null);
   const [editingFormula, setEditingFormula] = useState(null);
   const [selectedEquipmentClass, setSelectedEquipmentClass] = useState("Weighing");
-  
-  // E-Signature Modal
+
+  // ----------- E-SIGNATURE MODAL -----------
   const [eSignatureModal, setESignatureModal] = useState({
     isOpen: false,
-    action: '',
-    context: '',
+    action: "",
+    context: "",
     onSign: null
   });
 
   const showESignature = (action, context, onSign) => {
+    console.log("🔥 showESignature called with:", {
+      action,
+      context,
+      hasOnSign: !!onSign,
+      currentModalState: eSignatureModal.isOpen
+    });
+
     setESignatureModal({
       isOpen: true,
       action,
       context,
       onSign
     });
+
+    console.log("🔥 Modal state set to open");
   };
 
   const closeESignature = () => {
     setESignatureModal({
       isOpen: false,
-      action: '',
-      context: '',
+      action: "",
+      context: "",
       onSign: null
     });
   };
@@ -123,7 +129,7 @@ export default function App() {
     }
   };
 
-  // Translation helper
+  // ---------- TRANSLATION ----------
   const t = (key) => {
     const translations = {
       en: {
@@ -189,40 +195,47 @@ export default function App() {
         equipmentConfig: "Конфигурация оборудования"
       }
     };
-    return translations[language]?.[key] || translations['en'][key] || key;
+    return translations[language]?.[key] || translations["en"][key] || key;
   };
 
-  // Check permissions
+  // -------- PERMISSIONS --------
   const hasPermission = (permission) => {
     if (!currentUser) return false;
-    if (currentUser.role === 'Admin') return true;
+    if (currentUser.role === "Admin") return true;
+
+    // Разрешить просмотр аудита всем
+    if (permission === "canViewAudit") return true;
+
     return rolePermissions[currentUser.role]?.[permission] || false;
   };
 
-  // Audit trail helper
+  // -------- AUDIT TRAIL --------
   const addAuditEntry = (action, details, batchId = null) => {
-    setAuditTrail(prev => [...prev, {
-      id: Date.now(),
-      action,
-      details,
-      user: currentUser?.name || "System",
-      role: currentUser?.role || "System",
-      timestamp: new Date().toISOString(),
-      batchId
-    }]);
+    setAuditTrail((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        action,
+        details,
+        user: currentUser?.name || "System",
+        role: currentUser?.role || "System",
+        timestamp: new Date().toISOString(),
+        batchId
+      }
+    ]);
   };
 
-  // Login/Logout handlers
+  // -------- AUTH --------
   const handleLogin = async () => {
     const username = prompt("Enter username:");
     const password = prompt("Enter password:");
-    
+
     if (username && password) {
       try {
         const response = await apiClient.login(username, password);
         const user = {
           name: username,
-          role: response.user?.role || 'operator',
+          role: response.user?.role || "operator",
           allowedWorkStations: [1, 2, 3]
         };
         setCurrentUser(user);
@@ -240,58 +253,112 @@ export default function App() {
       setCurrentUser(null);
     }
   };
-
-  // Batch operations
+  // -------- BATCH OPERATIONS --------
   const startBatchProduction = (batchId, targetQty) => {
-    if (!hasPermission('canStartBatch')) {
+    if (!hasPermission("canStartBatch")) {
       alert("You don't have permission to start batches");
       return;
     }
-    
-    const batch = batches.find(b => b.id === batchId);
-    const workflow = workflows.find(w => w.id === batch.workflowId);
-    
-    setBatches(prev => prev.map(b => 
-      b.id === batchId 
-        ? { 
-            ...b, 
-            status: "in_progress", 
-            targetQuantity: targetQty, 
-            currentStep: workflow.steps[0].id,
-            currentStepIndex: 0,
-            startedAt: new Date().toISOString(),
-            startedBy: currentUser.name
-          }
-        : b
-    ));
-    addAuditEntry("Batch Started", `Batch ${batchId} started with target quantity ${targetQty}`, batchId);
+
+    const batch = batches.find((b) => b.id === batchId);
+    const workflow = workflows.find((w) => w.id === batch.workflowId);
+
+    setBatches((prev) =>
+      prev.map((b) =>
+        b.id === batchId
+          ? {
+              ...b,
+              status: "in_progress",
+              targetQuantity: targetQty,
+              currentStep: workflow.steps[0].id,
+              currentStepIndex: 0,
+              startedAt: new Date().toISOString(),
+              startedBy: currentUser.name
+            }
+          : b
+      )
+    );
+    addAuditEntry(
+      "Batch Started",
+      `Batch ${batchId} started with target quantity ${targetQty}`,
+      batchId
+    );
   };
 
+  // -------- EXECUTE STEP (с проверками оборудования) --------
   const executeStep = (batchId, stepId, value, lotNumber = null) => {
-    if (!hasPermission('canExecuteSteps')) {
+    if (!hasPermission("canExecuteSteps")) {
       alert("You don't have permission to execute steps");
       return;
     }
-    
-    const batch = batches.find(b => b.id === batchId);
-    const workflow = workflows.find(w => w.id === batch.workflowId);
-    const step = workflow.steps.find(s => s.id === stepId);
-    const stepIndex = workflow.steps.findIndex(s => s.id === stepId);
-    
+
+    const batch = batches.find((b) => b.id === batchId);
+    const workflow = workflows.find((w) => w.id === batch.workflowId);
+    const step = workflow.steps.find((s) => s.id === stepId);
+    const stepIndex = workflow.steps.findIndex((s) => s.id === stepId);
+
+    // -------- Проверка оборудования --------
+    if (step.equipmentId) {
+      const stepEquipment = equipment.find((eq) => eq.id === step.equipmentId);
+      if (!stepEquipment) {
+        alert("Required equipment not found!");
+        return;
+      }
+
+      // Проверка статуса оборудования
+      if (stepEquipment.status !== "operational") {
+        alert(
+          `Equipment ${stepEquipment.name} is not operational (Status: ${stepEquipment.status}). Cannot execute step.`
+        );
+        return;
+      }
+
+      // Проверка калибровки
+      if (stepEquipment.calibrationStatus === "expired") {
+        alert(
+          `Equipment ${stepEquipment.name} calibration expired. Please recalibrate before use.`
+        );
+        return;
+      }
+
+      if (stepEquipment.calibrationStatus === "due") {
+        if (
+          !confirm(
+            `Equipment ${stepEquipment.name} calibration is due. Continue anyway?`
+          )
+        ) {
+          return;
+        }
+      }
+
+      // Отметить, что оборудование в использовании
+      setEquipment((prev) =>
+        prev.map((eq) =>
+          eq.id === step.equipmentId
+            ? { ...eq, currentBatch: batchId, status: eq.status }
+            : eq
+        )
+      );
+    }
+
+    // -------- Проверка QC параметров --------
     if (step.type === "qc" && step.qcParameters) {
       const val = parseFloat(value);
       if (val < step.qcParameters.min || val > step.qcParameters.max) {
-        alert(`Value ${val} is out of specification (${step.qcParameters.min}-${step.qcParameters.max}). Please register deviation.`);
+        alert(
+          `Value ${val} is out of specification (${step.qcParameters.min}-${step.qcParameters.max}). Please register deviation.`
+        );
         return;
       }
     }
 
+    // -------- Расход материалов --------
     let materialConsumption = [...batch.materialConsumption];
     if (step.formulaBomId && step.type === "dispensing") {
-      const formula = formulas.find(f => f.id === batch.formulaId);
-      const bomItem = formula.bom.find(b => b.id === step.formulaBomId);
-      const consumedQty = bomItem.quantity * batch.targetQuantity / 1000;
-      
+      const formula = formulas.find((f) => f.id === batch.formulaId);
+      const bomItem = formula.bom.find((b) => b.id === step.formulaBomId);
+      const consumedQty = (bomItem.quantity * batch.targetQuantity) / 1000;
+
       materialConsumption.push({
         stepId,
         materialArticle: bomItem.materialArticle,
@@ -301,167 +368,231 @@ export default function App() {
         timestamp: new Date().toISOString()
       });
 
-      setMaterials(prev => prev.map(m => {
-        if (m.articleNumber === bomItem.materialArticle) {
-          addAuditEntry("Material Consumed", `${m.articleNumber}: ${consumedQty}g consumed from stock`);
-          return { ...m, quantity: m.quantity - consumedQty };
-        }
-        return m;
-      }));
+      setMaterials((prev) =>
+        prev.map((m) => {
+          if (m.articleNumber === bomItem.materialArticle) {
+            addAuditEntry(
+              "Material Consumed",
+              `${m.articleNumber}: ${consumedQty}g consumed from stock`
+            );
+            return { ...m, quantity: m.quantity - consumedQty };
+          }
+          return m;
+        })
+      );
     }
 
-    setBatches(prev => prev.map(b => {
-      if (b.id === batchId) {
-        const newHistory = [...b.history, {
-          stepId,
-          stepName: step.name,
-          value,
-          lotNumber,
-          completedBy: currentUser.name,
-          timestamp: new Date().toISOString(),
-          workStation: workStations.find(ws => ws.id === step.workStationId)?.name
-        }];
-        
-        const nextStepIndex = stepIndex + 1;
-        const progress = Math.round((newHistory.length / workflow.steps.length) * 100);
-        const nextStep = workflow.steps[nextStepIndex];
-        
-        return {
-          ...b,
-          history: newHistory,
-          materialConsumption,
-          progress,
-          currentStep: nextStep?.id || null,
-          currentStepIndex: nextStepIndex,
-          status: progress === 100 ? "completed" : "in_progress"
-        };
-      }
-      return b;
-    }));
-    
+    // -------- Обновление истории партии --------
+    setBatches((prev) =>
+      prev.map((b) => {
+        if (b.id === batchId) {
+          const newHistory = [
+            ...b.history,
+            {
+              stepId,
+              stepName: step.name,
+              value,
+              lotNumber,
+              completedBy: currentUser.name,
+              timestamp: new Date().toISOString(),
+              workStation: workStations.find(
+                (ws) => ws.id === step.workStationId
+              )?.name,
+              equipmentUsed: step.equipmentId
+                ? equipment.find((eq) => eq.id === step.equipmentId)?.name
+                : null,
+              equipmentParameters: step.equipmentId
+                ? equipment.find((eq) => eq.id === step.equipmentId)
+                    ?.customParameters
+                : null
+            }
+          ];
+
+          const nextStepIndex = stepIndex + 1;
+          const progress = Math.round(
+            (newHistory.length / workflow.steps.length) * 100
+          );
+          const nextStep = workflow.steps[nextStepIndex];
+
+          // Освобождаем оборудование
+          if (step.equipmentId) {
+            setEquipment((prev) =>
+              prev.map((eq) =>
+                eq.id === step.equipmentId
+                  ? { ...eq, currentBatch: null, lastBatch: batchId }
+                  : eq
+              )
+            );
+          }
+
+          return {
+            ...b,
+            history: newHistory,
+            materialConsumption,
+            progress,
+            currentStep: nextStep?.id || null,
+            currentStepIndex: nextStepIndex,
+            status: progress === 100 ? "completed" : "in_progress"
+          };
+        }
+        return b;
+      })
+    );
+
+    const equipmentInfo = step.equipmentId
+      ? `, Equipment: ${equipment.find((eq) => eq.id === step.equipmentId)?.name}`
+      : "";
+
     addAuditEntry(
-      "Step Completed", 
-      `Batch ${batchId} - Step: ${step.name}, Value: ${value}${lotNumber ? `, Lot: ${lotNumber}` : ''}`,
+      "Step Completed",
+      `Batch ${batchId} - Step: ${step.name}, Value: ${value}${
+        lotNumber ? `, Lot: ${lotNumber}` : ""
+      }${equipmentInfo}`,
       batchId
     );
   };
 
-  // Material operations
+  // -------- MATERIAL OPERATIONS --------
   const addNewMaterial = () => {
-    if (!hasPermission('canManageMaterials')) {
+    if (!hasPermission("canManageMaterials")) {
       alert("You don't have permission to manage materials");
       return;
     }
-    
+
     const newMaterial = {
       id: Date.now(),
-      articleNumber: `MAT-${String(materials.length + 1).padStart(3, '0')}`,
+      articleNumber: `MAT-${String(materials.length + 1).padStart(3, "0")}`,
       name: "New Material",
       status: "quarantine",
       quantity: 0,
       unit: "g",
       location: "Quarantine",
-      expiryDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
-      receivedDate: new Date().toISOString().split('T')[0],
+      expiryDate: new Date(
+        Date.now() + 365 * 24 * 60 * 60 * 1000
+      ).toISOString().split("T")[0],
+      receivedDate: new Date().toISOString().split("T")[0],
       supplier: "TBD",
       lotNumber: `LOT-${Date.now()}`,
       coa: null,
       quarantineTests: []
     };
-    setMaterials(prev => [...prev, newMaterial]);
-    addAuditEntry("Material Created", `New material ${newMaterial.articleNumber} created`);
+    setMaterials((prev) => [...prev, newMaterial]);
+    addAuditEntry(
+      "Material Created",
+      `New material ${newMaterial.articleNumber} created`
+    );
   };
 
   const updateMaterialStatus = (id, status) => {
-    if (!hasPermission('canValidateMaterials') && status === "validated") {
+    if (!hasPermission("canValidateMaterials") && status === "validated") {
       alert("You don't have permission to validate materials");
       return;
     }
-    
-    setMaterials(prev => prev.map(m => 
-      m.id === id ? { ...m, status } : m
-    ));
-    const material = materials.find(m => m.id === id);
-    addAuditEntry("Material Status Changed", `${material.articleNumber} status changed to ${status}`);
+
+    setMaterials((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, status } : m))
+    );
+    const material = materials.find((m) => m.id === id);
+    addAuditEntry(
+      "Material Status Changed",
+      `${material.articleNumber} status changed to ${status}`
+    );
   };
 
-  // Batch Release
+  // -------- BATCH RELEASE --------
   const releaseBatch = (batchId, releaseInfo) => {
-    setBatches(prev => prev.map(b => 
-      b.id === batchId ? { ...b, releaseInfo, status: 'released' } : b
-    ));
+    setBatches((prev) =>
+      prev.map((b) =>
+        b.id === batchId ? { ...b, releaseInfo, status: "released" } : b
+      )
+    );
   };
 
-  // Yield Reconciliation
+  // -------- YIELD RECONCILIATION --------
   const updateBatchYield = (batchId, yieldData) => {
-    setBatches(prev => prev.map(b => 
-      b.id === batchId ? { ...b, yieldReconciliation: yieldData, actualYield: yieldData.actualYield } : b
-    ));
+    setBatches((prev) =>
+      prev.map((b) =>
+        b.id === batchId
+          ? {
+              ...b,
+              yieldReconciliation: yieldData,
+              actualYield: yieldData.actualYield
+            }
+          : b
+      )
+    );
   };
 
-  // Export batch PDF
+  // -------- EXPORT BATCH PDF --------
   const exportBatchPDF = (batchId, reportType) => {
-    if (!hasPermission('canExportReports')) {
+    if (!hasPermission("canExportReports")) {
       alert("You don't have permission to export reports");
       return;
     }
-    
-    const batch = batches.find(b => b.id === batchId);
-    const formula = formulas.find(f => f.id === batch.formulaId);
-    const workflow = workflows.find(w => w.id === batch.workflowId);
-    const batchAudit = auditTrail.filter(a => a.batchId === batchId);
-    
+
+    const batch = batches.find((b) => b.id === batchId);
+    const formula = formulas.find((f) => f.id === batch.formulaId);
+    const workflow = workflows.find((w) => w.id === batch.workflowId);
+    const batchAudit = auditTrail.filter((a) => a.batchId === batchId);
+
     let content = `BATCH RECORD - ${batchId}\n\n`;
     content += `Product: ${formula.productName}\n`;
     content += `Formula: ${formula.articleNumber} v${formula.version}\n`;
     content += `Target Quantity: ${batch.targetQuantity} units\n`;
     content += `Status: ${batch.status}\n\n`;
-    
+
     if (reportType === "full" || reportType === "history") {
       content += `\nEXECUTION HISTORY:\n`;
       batch.history.forEach((h, idx) => {
-        content += `${idx+1}. ${h.stepName} - ${h.value} by ${h.completedBy} at ${new Date(h.timestamp).toLocaleString()}\n`;
+        content += `${idx + 1}. ${h.stepName} - ${h.value} by ${
+          h.completedBy
+        } at ${new Date(h.timestamp).toLocaleString()}\n`;
       });
     }
-    
+
     if (reportType === "full" || reportType === "materials") {
       content += `\nMATERIAL CONSUMPTION:\n`;
-      batch.materialConsumption.forEach(mc => {
+      batch.materialConsumption.forEach((mc) => {
         content += `- ${mc.materialArticle}: ${mc.quantity} ${mc.unit} (Lot: ${mc.lotNumber})\n`;
       });
     }
-    
+
     if (reportType === "full" || reportType === "audit") {
       content += `\nAUDIT TRAIL:\n`;
-      batchAudit.forEach(a => {
-        content += `${new Date(a.timestamp).toLocaleString()} - ${a.action} by ${a.user}: ${a.details}\n`;
+      batchAudit.forEach((a) => {
+        content += `${new Date(a.timestamp).toLocaleString()} - ${
+          a.action
+        } by ${a.user}: ${a.details}\n`;
       });
     }
-    
-    const blob = new Blob([content], { type: 'text/plain' });
+
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `Batch_${batchId}_${reportType}.txt`;
     a.click();
-    
-    addAuditEntry("Report Generated", `${reportType} report generated for batch ${batchId}`, batchId);
-  };
 
-  // Sidebar navigation structure
+    addAuditEntry(
+      "Report Generated",
+      `${reportType} report generated for batch ${batchId}`,
+      batchId
+    );
+  };
+  // -------- NAVIGATION STRUCTURE --------
   const navigationSections = [
     {
-      title: t('production'),
+      title: t("production"),
       items: [
         { id: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
         { id: "batches", label: t("batches"), icon: Beaker },
         { id: "formulas", label: t("formulas"), icon: FileText },
         { id: "workflows", label: t("workflows"), icon: GitBranch },
         { id: "materials", label: t("materials"), icon: Package },
-      ]
+      ],
     },
     {
-      title: t('quality'),
+      title: t("quality"),
       items: [
         { id: "batchRelease", label: t("batchRelease"), icon: FileCheck },
         { id: "yieldRecon", label: t("yieldRecon"), icon: Calculator },
@@ -471,26 +602,26 @@ export default function App() {
         { id: "dataIntegrity", label: t("dataIntegrity"), icon: Shield },
         { id: "deviations", label: "Deviations", icon: AlertTriangle },
         { id: "complaints", label: "Complaints", icon: MessageSquare },
-      ]
+      ],
     },
     {
-      title: t('management'),
+      title: t("management"),
       items: [
         { id: "equipment", label: t("equipment"), icon: Wrench },
+        { id: "equipmentConfig", label: t("equipmentConfig"), icon: Settings }, // ДОБАВИТЬ ЭТУ СТРОКУ
         { id: "equipmentLog", label: t("equipmentLog"), icon: Book },
         { id: "stations", label: t("stations"), icon: Monitor },
         { id: "personnel", label: t("personnel"), icon: Users },
         { id: "changeControl", label: t("changeControl"), icon: AlertTriangle },
         { id: "audit", label: t("audit"), icon: Clipboard },
         { id: "settings", label: t("settings"), icon: Settings },
-        // ... existing items
         { id: "sops", label: "SOPs", icon: FileText },
         { id: "environmental", label: "Environment", icon: Thermometer },
-      ]
-    }
+      ],
+    },
   ];
 
-  // Login screen
+  // -------- LOGIN SCREEN --------
   if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -498,28 +629,34 @@ export default function App() {
           <div className="w-20 h-20 bg-gradient-to-br from-teal-600 to-teal-800 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
             <span className="text-white font-bold text-4xl">N</span>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900">{t('welcome')}</h1>
-          <p className="text-gray-600">{t('subtitle')}</p>
+          <h1 className="text-4xl font-bold text-gray-900">{t("welcome")}</h1>
+          <p className="text-gray-600">{t("subtitle")}</p>
           <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded">
-            <p className="font-semibold mb-1">{t('loginInstructions')}</p>
-            <p>{t('enterUsername')}</p>
-            <p>{t('chooseRole')}</p>
+            <p className="font-semibold mb-1">{t("loginInstructions")}</p>
+            <p>{t("enterUsername")}</p>
+            <p>{t("chooseRole")}</p>
           </div>
-          <button onClick={handleLogin} className="btn-primary w-full flex items-center justify-center space-x-2">
+          <button
+            onClick={handleLogin}
+            className="btn-primary w-full flex items-center justify-center space-x-2"
+          >
             <LogIn className="w-5 h-5" />
-            <span>{t('login')}</span>
+            <span>{t("login")}</span>
           </button>
         </div>
       </div>
     );
   }
 
-  // Main application with sidebar
+  // -------- MAIN APP --------
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-gradient-to-b from-teal-900 to-teal-700 text-white transition-all duration-300 flex flex-col shadow-2xl`}>
-        {/* Logo */}
+      <div
+        className={`${
+          sidebarCollapsed ? "w-20" : "w-64"
+        } bg-gradient-to-b from-teal-900 to-teal-700 text-white transition-all duration-300 flex flex-col shadow-2xl`}
+      >
         <div className="p-4 border-b border-teal-600 flex items-center justify-between">
           {!sidebarCollapsed && (
             <div className="flex items-center space-x-2">
@@ -536,7 +673,11 @@ export default function App() {
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="p-2 hover:bg-teal-800 rounded-lg transition-colors"
           >
-            {sidebarCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            {sidebarCollapsed ? (
+              <Menu className="w-5 h-5" />
+            ) : (
+              <ChevronLeft className="w-5 h-5" />
+            )}
           </button>
         </div>
 
@@ -550,21 +691,27 @@ export default function App() {
                 </div>
               )}
               <nav className="space-y-1 px-2">
-                {section.items.map(item => {
+                {section.items.map((item) => {
                   const isActive = activeTab === item.id;
                   return (
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
                       className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all ${
-                        isActive 
-                          ? 'bg-white text-teal-900 shadow-lg font-semibold' 
-                          : 'hover:bg-teal-800 text-teal-100'
+                        isActive
+                          ? "bg-white text-teal-900 shadow-lg font-semibold"
+                          : "hover:bg-teal-800 text-teal-100"
                       }`}
-                      title={sidebarCollapsed ? item.label : ''}
+                      title={sidebarCollapsed ? item.label : ""}
                     >
-                      <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-teal-700' : ''}`} />
-                      {!sidebarCollapsed && <span className="text-sm">{item.label}</span>}
+                      <item.icon
+                        className={`w-5 h-5 flex-shrink-0 ${
+                          isActive ? "text-teal-700" : ""
+                        }`}
+                      />
+                      {!sidebarCollapsed && (
+                        <span className="text-sm">{item.label}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -575,17 +722,25 @@ export default function App() {
 
         {/* User Info */}
         <div className="p-4 border-t border-teal-600">
-          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-3'}`}>
+          <div
+            className={`flex items-center ${
+              sidebarCollapsed ? "justify-center" : "space-x-3"
+            }`}
+          >
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm truncate">{currentUser.name}</div>
-                <div className="text-xs text-teal-200 truncate">{currentUser.role}</div>
+                <div className="font-semibold text-sm truncate">
+                  {currentUser.name}
+                </div>
+                <div className="text-xs text-teal-200 truncate">
+                  {currentUser.role}
+                </div>
               </div>
             )}
             <button
               onClick={handleLogout}
               className="p-2 hover:bg-teal-800 rounded-lg transition-colors"
-              title={t('logout')}
+              title={t("logout")}
             >
               <LogOut className="w-5 h-5" />
             </button>
@@ -596,37 +751,46 @@ export default function App() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
         <div className="p-6">
-          {/* Quick Stats Bar */}
+          {/* Quick Stats */}
           <div className="mb-6 grid grid-cols-4 gap-4">
             <div className="glass-card text-center hover-lift">
-              <div className="text-2xl font-bold text-teal-700">{batches.filter(b => b.status === 'in_progress').length}</div>
+              <div className="text-2xl font-bold text-teal-700">
+                {batches.filter((b) => b.status === "in_progress").length}
+              </div>
               <div className="text-xs text-gray-600">Active Batches</div>
             </div>
             <div className="glass-card text-center hover-lift">
-              <div className="text-2xl font-bold text-yellow-700">{materials.filter(m => m.status === 'quarantine').length}</div>
+              <div className="text-2xl font-bold text-yellow-700">
+                {materials.filter((m) => m.status === "quarantine").length}
+              </div>
               <div className="text-xs text-gray-600">In Quarantine</div>
             </div>
             <div className="glass-card text-center hover-lift">
-              <div className="text-2xl font-bold text-blue-700">{capas.filter(c => c.status !== 'closed').length}</div>
+              <div className="text-2xl font-bold text-blue-700">
+                {capas.filter((c) => c.status !== "closed").length}
+              </div>
               <div className="text-xs text-gray-600">Open CAPAs</div>
             </div>
             <div className="glass-card text-center hover-lift">
-              <div className="text-2xl font-bold text-green-700">{equipment.filter(e => e.status === 'operational').length}/{equipment.length}</div>
+              <div className="text-2xl font-bold text-green-700">
+                {
+                  equipment.filter((e) => e.status === "operational").length
+                }/{equipment.length}
+              </div>
               <div className="text-xs text-gray-600">Equipment OK</div>
             </div>
           </div>
 
-          {/* Content Area */}
+          {/* Active Tab Content */}
           <div className="space-y-6">
             {activeTab === "dashboard" && (
-              <Dashboard 
+              <Dashboard
                 batches={batches}
                 formulas={formulas}
                 workflows={workflows}
                 auditTrail={auditTrail}
               />
             )}
-
             {activeTab === "batches" && (
               <Batches
                 batches={batches}
@@ -641,24 +805,17 @@ export default function App() {
                 startBatchProduction={startBatchProduction}
                 executeStep={executeStep}
                 exportBatchPDF={exportBatchPDF}
-                addAuditEntry={addAuditEntry}  // Добавить эту строку!
+                addAuditEntry={addAuditEntry}
               />
             )}
-
             {activeTab === "formulas" && (
               <Formulas
-               // formulas={formulas}
-               // setFormulas={setFormulas}
-               // materials={materials}
-               // editingFormula={editingFormula}
-                //setEditingFormula={setEditingFormula}
                 addAuditEntry={addAuditEntry}
                 language={language}
-                showESignature={showESignature}  // Эта строка важна!
+                showESignature={showESignature}
                 currentUser={currentUser}
               />
             )}
-
             {activeTab === "workflows" && (
               <Workflows
                 workflows={workflows}
@@ -669,7 +826,6 @@ export default function App() {
                 addAuditEntry={addAuditEntry}
               />
             )}
-
             {activeTab === "materials" && (
               <Materials
                 materials={materials}
@@ -682,7 +838,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "equipment" && (
               <Equipment
                 equipment={equipment}
@@ -691,17 +846,13 @@ export default function App() {
                 language={language}
               />
             )}
-            {activeTab === "deviations" && (
-              <DeviationManagement
-                deviations={deviations}
-                setDeviations={setDeviations}
-                batches={batches}
-                materials={materials}
-                currentUser={currentUser}
+            {activeTab === "equipmentConfig" && (
+              <EquipmentConfigurator
+                equipmentClasses={equipmentClassesState}
+                setEquipmentClasses={setEquipmentClassesState}
+                equipment={equipment}
+                setEquipment={setEquipment}
                 addAuditEntry={addAuditEntry}
-                showESignature={showESignature}
-                capas={capas}
-                setCapas={setCapas}
                 language={language}
               />
             )}
@@ -719,7 +870,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "complaints" && (
               <ComplaintHandling
                 complaints={complaints}
@@ -745,7 +895,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "environmental" && (
               <EnvironmentalMonitoring
                 envRecords={envRecords}
@@ -757,7 +906,6 @@ export default function App() {
                 language={language}
               />
             )}
-  
             {activeTab === "stations" && (
               <WorkStations
                 workStations={workStations}
@@ -766,7 +914,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "personnel" && (
               <Personnel
                 personnel={personnel}
@@ -778,15 +925,9 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "audit" && (
-              <AuditTrail
-                auditTrail={auditTrail}
-                batches={batches}
-              />
+              <AuditTrail auditTrail={auditTrail} batches={batches} />
             )}
-            
-
             {activeTab === "settings" && (
               <SettingsComponent
                 language={language}
@@ -797,11 +938,9 @@ export default function App() {
                 setRolePermissions={setRolePermissions}
               />
             )}
-
-            {/* NEW COMPONENTS */}
             {activeTab === "batchRelease" && (
               <BatchRelease
-                batch={batches.find(b => b.status === 'completed')}
+                batch={batches.find((b) => b.status === "completed")}
                 workflows={workflows}
                 deviations={deviations}
                 currentUser={currentUser}
@@ -810,18 +949,20 @@ export default function App() {
                 addAuditEntry={addAuditEntry}
               />
             )}
-
             {activeTab === "yieldRecon" && (
               <YieldReconciliation
-                batch={batches.find(b => b.status === 'completed')}
-                formula={formulas.find(f => f.id === batches.find(b => b.status === 'completed')?.formulaId)}
+                batch={batches.find((b) => b.status === "completed")}
+                formula={formulas.find(
+                  (f) =>
+                    f.id ===
+                    batches.find((b) => b.status === "completed")?.formulaId
+                )}
                 updateBatchYield={updateBatchYield}
                 addAuditEntry={addAuditEntry}
                 showESignature={showESignature}
                 currentUser={currentUser}
               />
             )}
-
             {activeTab === "cleaning" && (
               <CleaningValidation
                 cleaningRecords={cleaningRecords}
@@ -834,7 +975,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "changeControl" && (
               <ChangeControl
                 changes={changes}
@@ -847,7 +987,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "capa" && (
               <CAPASystem
                 capas={capas}
@@ -858,7 +997,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "genealogy" && (
               <GenealogyTracker
                 batches={batches}
@@ -867,7 +1005,6 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "equipmentLog" && (
               <EquipmentLogbook
                 equipment={equipment}
@@ -879,17 +1016,15 @@ export default function App() {
                 language={language}
               />
             )}
-
             {activeTab === "dataIntegrity" && (
-              <DataIntegrityMonitor
-                auditTrail={auditTrail}
-              />
+              <DataIntegrityMonitor auditTrail={auditTrail} />
             )}
           </div>
         </div>
       </div>
 
-      {/* E-Signature Modal */}
+      {/* E-Signature Modal — в самом конце */}
+      {console.log("🔥 About to render ESignatureModal with:", eSignatureModal)}
       <ESignatureModal
         isOpen={eSignatureModal.isOpen}
         onClose={closeESignature}
