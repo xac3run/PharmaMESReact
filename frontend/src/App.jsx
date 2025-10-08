@@ -841,8 +841,10 @@ export default function App() {
             {activeTab === "equipment" && (
               <Equipment
                 equipment={equipment}
+                setEquipment={setEquipment}
                 selectedEquipmentClass={selectedEquipmentClass}
                 setSelectedEquipmentClass={setSelectedEquipmentClass}
+                addAuditEntry={addAuditEntry}
                 language={language}
               />
             )}

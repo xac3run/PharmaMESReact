@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Edit3, Save, ChevronDown, ChevronUp, X } from 'lucide-react';
 
-export default function EquipmentConfigurator({ 
+export default function EquipmentConfigurator({
   equipmentClasses,
   setEquipmentClasses,
   equipment,
@@ -12,11 +12,12 @@ export default function EquipmentConfigurator({
   const [editingClass, setEditingClass] = useState(null);
   const [newClassName, setNewClassName] = useState('');
   const [newSubclass, setNewSubclass] = useState('');
-  const [expandedEquipment, setExpandedEquipment] = useState(null);
+  const [expandedClass, setExpandedClass] = useState(null);
   const [editingEquipment, setEditingEquipment] = useState(null);
+  const [expandedEquipment, setExpandedEquipment] = useState(null);
 
   const addClass = () => {
-    if (!newClassName) return;
+    if (!newClassName.trim()) return;
     setEquipmentClasses(prev => ({
       ...prev,
       [newClassName]: []
@@ -26,7 +27,7 @@ export default function EquipmentConfigurator({
   };
 
   const addSubclass = (className) => {
-    if (!newSubclass) return;
+    if (!newSubclass.trim()) return;
     setEquipmentClasses(prev => ({
       ...prev,
       [className]: [...prev[className], newSubclass]
@@ -55,158 +56,208 @@ export default function EquipmentConfigurator({
   const addEquipmentInstance = (className, subclass) => {
     const newEquipment = {
       id: Date.now(),
-      name: `${className}-${equipment.filter(e => e.class === className).length + 1}`,
+      name: `${className}-${subclass}-${Math.floor(Math.random() * 1000)}`,
       class: className,
-      subclass: subclass,
-      status: "operational",
-      currentBatch: null,
-      lastBatch: null,
-      location: "TBD",
+      subclass,
+      status: 'operational',
+      location: 'Main Area',
+      calibrationStatus: 'valid',
       globalParameters: {},
       customParameters: [],
-      calibrationStatus: "valid",
-      nextCalibrationDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
-      operationalLimits: {}
     };
     setEquipment(prev => [...prev, newEquipment]);
-    addAuditEntry("Equipment Created", `${newEquipment.name} created`);
+    addAuditEntry("Equipment Created", `Equipment ${newEquipment.name} created (${className}/${subclass})`);
+  };
+
+  const updateEquipmentField = (id, field, value) => {
+    setEquipment(prev =>
+      prev.map(eq => (eq.id === id ? { ...eq, [field]: value } : eq))
+    );
   };
 
   const addCustomParameter = (equipmentId) => {
-    const paramName = prompt("Enter parameter name:");
-    if (!paramName) return;
-    
-    const paramType = prompt("Enter parameter type (text/number/date/select):");
-    const paramValue = prompt("Enter parameter value:");
-    
-    setEquipment(prev => prev.map(eq => {
-      if (eq.id === equipmentId) {
-        return {
-          ...eq,
-          customParameters: [
-            ...(eq.customParameters || []),
-            { 
-              name: paramName, 
-              type: paramType || 'text', 
-              value: paramValue || '',
-              unit: paramType === 'number' ? prompt("Enter unit (optional):") || '' : '',
-              minValue: paramType === 'number' ? parseFloat(prompt("Enter min value (optional):") || '0') : null,
-              maxValue: paramType === 'number' ? parseFloat(prompt("Enter max value (optional):") || '100') : null
-            }
-          ]
-        };
-      }
-      return eq;
-    }));
-    addAuditEntry("Equipment Parameter Added", `Parameter ${paramName} added to equipment`);
-  };
-
-  const updateEquipmentField = (equipmentId, field, value) => {
-    setEquipment(prev => prev.map(eq => 
-      eq.id === equipmentId ? { ...eq, [field]: value } : eq
-    ));
+    setEquipment(prev =>
+      prev.map(eq => {
+        if (eq.id === equipmentId) {
+          const newParam = { name: 'New Param', value: '', unit: '', minValue: null, maxValue: null };
+          return { ...eq, customParameters: [...(eq.customParameters || []), newParam] };
+        }
+        return eq;
+      })
+    );
   };
 
   const saveEquipmentChanges = (equipmentId) => {
+    const eq = equipment.find(e => e.id === equipmentId);
+    addAuditEntry("Equipment Updated", `${eq.name} updated`);
     setEditingEquipment(null);
-    addAuditEntry("Equipment Updated", `Equipment configuration updated`);
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Equipment Configurator</h2>
-      </div>
-
-      {/* Class Management */}
+      {/* Equipment Classes */}
       <div className="glass-card">
-        <h3 className="text-lg font-semibold mb-4">Equipment Classes</h3>
-        
-        <div className="flex space-x-2 mb-4">
-          <input
-            className="border rounded px-3 py-2 flex-1"
-            placeholder="New class name..."
-            value={newClassName}
-            onChange={(e) => setNewClassName(e.target.value)}
-          />
-          <button onClick={addClass} className="btn-primary">
-            <Plus className="w-4 h-4" />
-          </button>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold">Equipment Classes</h2>
+          <div className="flex space-x-2">
+            <input
+              className="border rounded px-3 py-2 text-sm"
+              placeholder="New class name..."
+              value={newClassName}
+              onChange={(e) => setNewClassName(e.target.value)}
+            />
+            <button onClick={addClass} className="btn-primary">
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-3">
-          {Object.keys(equipmentClasses).map(className => (
-            <div key={className} className="border rounded-lg p-3 bg-white/40">
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-semibold text-lg">{className}</h4>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setEditingClass(editingClass === className ? null : className)}
-                    className="p-1 hover:bg-gray-200 rounded"
-                  >
-                    {editingClass === className ? <Save className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={() => removeClass(className)}
-                    className="p-1 hover:bg-red-100 text-red-600 rounded"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+        <table className="w-full text-sm">
+          <thead className="bg-white/40">
+            <tr className="border-b">
+              <th className="text-left py-2 px-2 font-semibold text-xs">Class Name</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Subclasses</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Equipment Count</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.keys(equipmentClasses).map((className, idx) => (
+              <React.Fragment key={className}>
+                <tr className={`border-b hover:bg-white/40 transition-colors ${idx % 2 === 0 ? 'bg-white/20' : ''}`}>
+                  <td className="py-2 px-2 font-semibold text-xs">{className}</td>
+                  <td className="py-2 px-2 text-xs">
+                    <div className="flex flex-wrap gap-1">
+                      {equipmentClasses[className].slice(0, 3).map(subclass => (
+                        <span key={subclass} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
+                          {subclass}
+                        </span>
+                      ))}
+                      {equipmentClasses[className].length > 3 && (
+                        <span className="text-gray-500 text-xs">
+                          +{equipmentClasses[className].length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2 px-2 text-xs">
+                    {equipment.filter(eq => eq.class === className).length} units
+                  </td>
+                  <td className="py-2 px-2">
+                    <div className="flex space-x-1">
+                      <button
+                        onClick={() => setExpandedClass(expandedClass === className ? null : className)}
+                        className="p-1 hover:bg-blue-100 rounded text-blue-600"
+                      >
+                        {expandedClass === className ? (
+                          <ChevronUp className="w-3 h-3" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setEditingClass(editingClass === className ? null : className)}
+                        className="p-1 hover:bg-gray-200 rounded"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => removeClass(className)}
+                        className="p-1 hover:bg-red-100 text-red-600 rounded"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
 
-              {editingClass === className && (
-                <div className="mb-2">
-                  <div className="flex space-x-2">
-                    <input
-                      className="border rounded px-2 py-1 flex-1 text-sm"
-                      placeholder="New subclass..."
-                      value={newSubclass}
-                      onChange={(e) => setNewSubclass(e.target.value)}
-                    />
-                    <button 
-                      onClick={() => addSubclass(className)}
-                      className="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              )}
+                {(expandedClass === className || editingClass === className) && (
+                  <tr>
+                    <td colSpan="4" className="py-3 px-3 bg-white/60">
+                      {editingClass === className ? (
+                        <div className="space-y-3">
+                          <div className="flex space-x-2 mb-2">
+                            <input
+                              className="border rounded px-2 py-1 flex-1 text-sm"
+                              placeholder="Add new subclass..."
+                              value={newSubclass}
+                              onChange={(e) => setNewSubclass(e.target.value)}
+                            />
+                            <button
+                              onClick={() => addSubclass(className)}
+                              className="text-sm bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                            >
+                              Add
+                            </button>
+                          </div>
 
-              <div className="flex flex-wrap gap-2">
-                {equipmentClasses[className].map(subclass => (
-                  <div key={subclass} className="flex items-center space-x-1 bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
-                    <span>{subclass}</span>
-                    {editingClass === className && (
-                      <>
-                        <button
-                          onClick={() => removeSubclass(className, subclass)}
-                          className="hover:bg-blue-200 rounded p-0.5"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => addEquipmentInstance(className, subclass)}
-                          className="hover:bg-blue-200 rounded p-0.5"
-                          title="Add equipment instance"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+                          <div className="grid grid-cols-4 gap-2">
+                            {equipmentClasses[className].map(subclass => (
+                              <div
+                                key={subclass}
+                                className="flex items-center justify-between bg-blue-50 px-2 py-1 rounded text-sm"
+                              >
+                                <span>{subclass}</span>
+                                <div className="flex space-x-1">
+                                  <button
+                                    onClick={() => removeSubclass(className, subclass)}
+                                    className="text-red-600 hover:bg-red-100 rounded p-0.5"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => addEquipmentInstance(className, subclass)}
+                                    className="text-green-600 hover:bg-green-100 rounded p-0.5"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            onClick={() => setEditingClass(null)}
+                            className="text-xs bg-gray-500 text-white px-3 py-1 rounded"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs space-y-2">
+                          <div className="grid grid-cols-4 gap-2">
+                            {equipmentClasses[className].map(subclass => (
+                              <div
+                                key={subclass}
+                                className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-center"
+                              >
+                                {subclass}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="text-gray-600">
+                            Equipment instances:{' '}
+                            {equipment
+                              .filter(eq => eq.class === className)
+                              .map(eq => eq.name)
+                              .join(', ') || 'None'}
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
       </div>
-
       {/* Equipment Instances */}
       <div className="glass-card">
-        <h3 className="text-lg font-semibold mb-4">Equipment Instances</h3>
-        
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold">Equipment Instances</h2>
+        </div>
+
         <table className="w-full text-sm">
           <thead className="bg-white/40">
             <tr className="border-b">
@@ -223,46 +274,71 @@ export default function EquipmentConfigurator({
           <tbody>
             {equipment.map((eq, idx) => (
               <React.Fragment key={eq.id}>
-                <tr className={`border-b hover:bg-white/40 ${idx % 2 === 0 ? 'bg-white/20' : ''}`}>
+                <tr className={`border-b hover:bg-white/40 transition-colors ${idx % 2 === 0 ? 'bg-white/20' : ''}`}>
                   <td className="py-2 px-2 font-semibold text-xs">{eq.name}</td>
                   <td className="py-2 px-2 text-xs">{eq.class}</td>
                   <td className="py-2 px-2 text-xs">{eq.subclass}</td>
                   <td className="py-2 px-2 text-xs">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      eq.status === 'operational' ? 'bg-green-100 text-green-800' :
-                      eq.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
-                      eq.status === 'calibration' ? 'bg-blue-100 text-blue-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${
+                        eq.status === 'operational'
+                          ? 'bg-green-100 text-green-800'
+                          : eq.status === 'maintenance'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : eq.status === 'calibration'
+                          ? 'bg-blue-100 text-blue-800'
+                          : eq.status === 'cleaning'
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
                       {eq.status}
                     </span>
                   </td>
                   <td className="py-2 px-2 text-xs">{eq.location}</td>
                   <td className="py-2 px-2 text-xs">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      eq.calibrationStatus === 'valid' ? 'bg-green-100 text-green-800' :
-                      eq.calibrationStatus === 'due' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {eq.calibrationStatus}
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${
+                        eq.calibrationStatus === 'valid'
+                          ? 'bg-green-100 text-green-800'
+                          : eq.calibrationStatus === 'due'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {eq.calibrationStatus || 'valid'}
                     </span>
                   </td>
                   <td className="py-2 px-2 text-xs">
-                    {Object.keys(eq.globalParameters).length + (eq.customParameters?.length || 0)} params
+                    {(Object.keys(eq.globalParameters || {}).length) + (eq.customParameters?.length || 0)} params
                   </td>
                   <td className="py-2 px-2">
                     <div className="flex space-x-1">
                       <button
                         onClick={() => setEditingEquipment(editingEquipment === eq.id ? null : eq.id)}
                         className="p-1 hover:bg-blue-100 rounded"
+                        title={editingEquipment === eq.id ? 'Save mode off' : 'Edit equipment'}
                       >
                         {editingEquipment === eq.id ? <Save className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
                       </button>
                       <button
                         onClick={() => setExpandedEquipment(expandedEquipment === eq.id ? null : eq.id)}
                         className="p-1 hover:bg-gray-200 rounded"
+                        title={expandedEquipment === eq.id ? 'Collapse' : 'Expand'}
                       >
                         {expandedEquipment === eq.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete equipment ${eq.name}?`)) {
+                            setEquipment(prev => prev.filter(e => e.id !== eq.id));
+                            addAuditEntry("Equipment Deleted", `${eq.name} removed`);
+                          }
+                        }}
+                        className="p-1 hover:bg-red-100 rounded text-red-600"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   </td>
@@ -272,8 +348,9 @@ export default function EquipmentConfigurator({
                   <tr>
                     <td colSpan="8" className="py-3 px-3 bg-white/60">
                       <div className="space-y-3">
+                        {/* Editable top fields */}
                         {editingEquipment === eq.id && (
-                          <div className="grid grid-cols-4 gap-2 mb-4">
+                          <div className="grid grid-cols-4 gap-2">
                             <div>
                               <label className="block text-xs font-semibold mb-1">Name</label>
                               <input
@@ -305,7 +382,7 @@ export default function EquipmentConfigurator({
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-semibold mb-1">Calibration Status</label>
+                              <label className="block text-xs font-semibold mb-1">Calibration</label>
                               <select
                                 className="border rounded px-2 py-1 w-full text-xs"
                                 value={eq.calibrationStatus || 'valid'}
@@ -319,6 +396,7 @@ export default function EquipmentConfigurator({
                           </div>
                         )}
 
+                        {/* Parameters section */}
                         <div>
                           <div className="flex justify-between items-center mb-2">
                             <p className="text-xs font-semibold">Parameters & Limits:</p>
@@ -331,19 +409,128 @@ export default function EquipmentConfigurator({
                               </button>
                             )}
                           </div>
+
                           <div className="grid grid-cols-3 gap-2 text-xs">
-                            {Object.entries(eq.globalParameters).map(([key, value]) => (
+                            {/* Global parameters (read-only for now) */}
+                            {Object.entries(eq.globalParameters || {}).map(([key, value]) => (
                               <div key={key} className="bg-gray-50 px-2 py-1 rounded">
-                                <span className="font-semibold">{key}:</span> {Array.isArray(value) ? value.join('-') : value}
+                                <span className="font-semibold">{key}:</span>{' '}
+                                {Array.isArray(value) ? value.join(' - ') : String(value)}
                               </div>
                             ))}
-                            {eq.customParameters?.map((param, pidx) => (
-                              <div key={pidx} className="bg-blue-50 px-2 py-1 rounded">
-                                <span className="font-semibold">{param.name}:</span> {param.value}
-                                {param.unit && <span className="text-gray-500"> {param.unit}</span>}
-                                {param.minValue !== null && param.maxValue !== null && (
-                                  <div className="text-xs text-gray-500">
-                                    Range: {param.minValue} - {param.maxValue}
+
+                            {/* Custom parameters (editable) */}
+                            {(eq.customParameters || []).map((param, pidx) => (
+                              <div key={pidx} className="bg-blue-50 px-2 py-2 rounded">
+                                {editingEquipment === eq.id ? (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center space-x-1">
+                                      <input
+                                        className="border rounded px-1 py-0.5 w-1/3"
+                                        placeholder="Name"
+                                        value={param.name}
+                                        onChange={(e) =>
+                                          setEquipment(prev =>
+                                            prev.map(eqi => {
+                                              if (eqi.id !== eq.id) return eqi;
+                                              const cp = [...(eqi.customParameters || [])];
+                                              cp[pidx] = { ...cp[pidx], name: e.target.value };
+                                              return { ...eqi, customParameters: cp };
+                                            })
+                                          )
+                                        }
+                                      />
+                                      <input
+                                        className="border rounded px-1 py-0.5 w-1/4"
+                                        placeholder="Value"
+                                        value={param.value}
+                                        onChange={(e) =>
+                                          setEquipment(prev =>
+                                            prev.map(eqi => {
+                                              if (eqi.id !== eq.id) return eqi;
+                                              const cp = [...(eqi.customParameters || [])];
+                                              cp[pidx] = { ...cp[pidx], value: e.target.value };
+                                              return { ...eqi, customParameters: cp };
+                                            })
+                                          )
+                                        }
+                                      />
+                                      <input
+                                        className="border rounded px-1 py-0.5 w-1/5"
+                                        placeholder="Unit"
+                                        value={param.unit || ''}
+                                        onChange={(e) =>
+                                          setEquipment(prev =>
+                                            prev.map(eqi => {
+                                              if (eqi.id !== eq.id) return eqi;
+                                              const cp = [...(eqi.customParameters || [])];
+                                              cp[pidx] = { ...cp[pidx], unit: e.target.value };
+                                              return { ...eqi, customParameters: cp };
+                                            })
+                                          )
+                                        }
+                                      />
+                                      <button
+                                        className="ml-1 text-red-600 hover:bg-red-100 rounded p-0.5"
+                                        onClick={() =>
+                                          setEquipment(prev =>
+                                            prev.map(eqi => {
+                                              if (eqi.id !== eq.id) return eqi;
+                                              const cp = [...(eqi.customParameters || [])];
+                                              cp.splice(pidx, 1);
+                                              return { ...eqi, customParameters: cp };
+                                            })
+                                          )
+                                        }
+                                        title="Remove parameter"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <div className="flex items-center space-x-1">
+                                      <input
+                                        type="number"
+                                        className="border rounded px-1 py-0.5 w-1/3"
+                                        placeholder="Min"
+                                        value={param.minValue ?? ''}
+                                        onChange={(e) =>
+                                          setEquipment(prev =>
+                                            prev.map(eqi => {
+                                              if (eqi.id !== eq.id) return eqi;
+                                              const cp = [...(eqi.customParameters || [])];
+                                              cp[pidx] = { ...cp[pidx], minValue: e.target.value === '' ? null : Number(e.target.value) };
+                                              return { ...eqi, customParameters: cp };
+                                            })
+                                          )
+                                        }
+                                      />
+                                      <input
+                                        type="number"
+                                        className="border rounded px-1 py-0.5 w-1/3"
+                                        placeholder="Max"
+                                        value={param.maxValue ?? ''}
+                                        onChange={(e) =>
+                                          setEquipment(prev =>
+                                            prev.map(eqi => {
+                                              if (eqi.id !== eq.id) return eqi;
+                                              const cp = [...(eqi.customParameters || [])];
+                                              cp[pidx] = { ...cp[pidx], maxValue: e.target.value === '' ? null : Number(e.target.value) };
+                                              return { ...eqi, customParameters: cp };
+                                            })
+                                          )
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <span className="font-semibold">{param.name}:</span>{' '}
+                                    {param.value}{param.unit ? ` ${param.unit}` : ''}
+                                    {(param.minValue != null && param.maxValue != null) && (
+                                      <div className="text-[11px] text-gray-600">
+                                        Range: {param.minValue} - {param.maxValue}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -351,12 +538,14 @@ export default function EquipmentConfigurator({
                           </div>
                         </div>
 
+                        {/* Current batch info */}
                         {eq.currentBatch && (
                           <div className="bg-blue-50 border border-blue-200 rounded p-2">
                             <p className="text-xs font-semibold">Currently Processing: Batch {eq.currentBatch}</p>
                           </div>
                         )}
 
+                        {/* Save / Cancel when editing */}
                         {editingEquipment === eq.id && (
                           <div className="flex space-x-2">
                             <button
