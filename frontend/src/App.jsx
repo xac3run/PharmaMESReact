@@ -11,7 +11,9 @@ import {
 import Dashboard from "./components/Dashboard";
 import Batches from "./components/Batches";
 import Formulas from "./components/Formulas";
-import Workflows from "./components/Workflows";
+//import Workflows from "./components/Workflows";
+
+import EnhancedWorkflows from "./components/EnhancedWorkflows";
 import Materials from "./components/Materials";
 import Equipment from "./components/Equipment";
 import WorkStations from "./components/WorkStations";
@@ -270,7 +272,7 @@ export default function App() {
               ...b,
               status: "in_progress",
               targetQuantity: targetQty,
-              currentStep: workflow.steps[0].id,
+              currentStep: workflow.steps?.[0]?.id || workflow.nodes?.find(n => n.type === 'start')?.id,
               currentStepIndex: 0,
               startedAt: new Date().toISOString(),
               startedBy: currentUser.name
@@ -294,8 +296,8 @@ export default function App() {
 
     const batch = batches.find((b) => b.id === batchId);
     const workflow = workflows.find((w) => w.id === batch.workflowId);
-    const step = workflow.steps.find((s) => s.id === stepId);
-    const stepIndex = workflow.steps.findIndex((s) => s.id === stepId);
+    const step = workflow.steps?.find((s) => s.id === stepId);
+    const stepIndex = workflow.steps?.findIndex((s) => s.id === stepId) || 0;
 
     // -------- Проверка оборудования --------
     if (step.equipmentId) {
@@ -816,14 +818,16 @@ export default function App() {
                 currentUser={currentUser}
               />
             )}
+            
             {activeTab === "workflows" && (
-              <Workflows
+              <EnhancedWorkflows
                 workflows={workflows}
                 setWorkflows={setWorkflows}
                 formulas={formulas}
                 equipment={equipment}
                 workStations={workStations}
                 addAuditEntry={addAuditEntry}
+                language={language}
               />
             )}
             {activeTab === "materials" && (
