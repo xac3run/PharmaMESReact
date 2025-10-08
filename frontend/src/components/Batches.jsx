@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Beaker, CheckCircle, GitBranch, Package, Download, Plus, Play, Settings } from 'lucide-react';
+import React from 'react';
+import { Beaker, CheckCircle, GitBranch, Package, Download } from 'lucide-react';
 
 export default function Batches({ 
   batches, 
@@ -13,248 +13,14 @@ export default function Batches({
   setExpandedBatch,
   startBatchProduction,
   executeStep,
-  exportBatchPDF,
-  addAuditEntry
+  exportBatchPDF
 }) {
-  const [showCreateBatch, setShowCreateBatch] = useState(false);
-  const [newBatch, setNewBatch] = useState({
-    formulaId: '',
-    workflowId: '',
-    targetQuantity: '',
-    priority: 'normal'
-  });
-
-  // Create new batch function for demo
-  const createNewBatch = () => {
-    if (!newBatch.formulaId || !newBatch.workflowId || !newBatch.targetQuantity) {
-      alert('Please fill all required fields');
-      return;
-    }
-
-    const batchId = `BATCH-${String(batches.length + 1).padStart(3, '0')}`;
-    const selectedFormula = formulas.find(f => f.id === parseInt(newBatch.formulaId));
-    const selectedWorkflow = workflows.find(w => w.id === parseInt(newBatch.workflowId));
-
-    const newBatchData = {
-      id: batchId,
-      formulaId: parseInt(newBatch.formulaId),
-      workflowId: parseInt(newBatch.workflowId),
-      status: "ready",
-      targetQuantity: parseInt(newBatch.targetQuantity),
-      actualQuantity: 0,
-      progress: 0,
-      priority: newBatch.priority,
-      currentStep: null,
-      currentStepIndex: 0,
-      createdAt: new Date().toISOString(),
-      startedAt: null,
-      completedAt: null,
-      createdBy: currentUser.name,
-      startedBy: null,
-      history: [],
-      materialConsumption: [],
-      qcResults: [],
-      deviations: []
-    };
-
-    setBatches(prev => [newBatchData, ...prev]);
-    
-    if (addAuditEntry) {
-      addAuditEntry(
-        "Batch Created", 
-        `New batch ${batchId} created for ${selectedFormula?.productName} with target quantity ${newBatch.targetQuantity}`
-      );
-    }
-
-    // Reset form
-    setNewBatch({
-      formulaId: '',
-      workflowId: '',
-      targetQuantity: '',
-      priority: 'normal'
-    });
-    setShowCreateBatch(false);
-  };
-
-  // Enhanced start production function
-  const handleStartProduction = (batchId, targetQty) => {
-    const batch = batches.find(b => b.id === batchId);
-    const workflow = workflows.find(w => w.id === batch.workflowId);
-    
-    if (!workflow || !workflow.steps || workflow.steps.length === 0) {
-      alert('No workflow steps found for this batch');
-      return;
-    }
-    
-    setBatches(prev => prev.map(b => 
-      b.id === batchId 
-        ? { 
-            ...b, 
-            status: "in_progress", 
-            targetQuantity: targetQty, 
-            currentStep: workflow.steps[0].id,
-            currentStepIndex: 0,
-            startedAt: new Date().toISOString(),
-            startedBy: currentUser.name
-          }
-        : b
-    ));
-    
-    if (addAuditEntry) {
-      addAuditEntry("Batch Started", `Batch ${batchId} started with target quantity ${targetQty}`, batchId);
-    }
-  };
-
-  // Quick start function for demo
-  const quickStartBatch = (batchId) => {
-    const batch = batches.find(b => b.id === batchId);
-    const defaultQty = batch.targetQuantity || 1000;
-    handleStartProduction(batchId, defaultQty);
-  };
-
-  // Demo batch completion function
-  const completeBatchDemo = (batchId) => {
-    const batch = batches.find(b => b.id === batchId);
-    const workflow = workflows.find(w => w.id === batch.workflowId);
-    
-    if (!workflow) return;
-
-    // Auto-complete all remaining steps for demo
-    const remainingSteps = workflow.steps.filter(step => 
-      !batch.history.find(h => h.stepId === step.id)
-    );
-
-    const newHistory = [...batch.history];
-    remainingSteps.forEach((step, index) => {
-      newHistory.push({
-        stepId: step.id,
-        stepName: step.name,
-        value: step.type === 'qc' ? '95.5' : 'COMPLETED',
-        lotNumber: step.type === 'dispensing' ? `LOT-${Date.now()}-${index}` : null,
-        completedBy: currentUser.name,
-        timestamp: new Date(Date.now() + index * 1000).toISOString(),
-        workStation: workStations.find(ws => ws.id === step.workStationId)?.name
-      });
-    });
-
-    setBatches(prev => prev.map(b => 
-      b.id === batchId 
-        ? { 
-            ...b, 
-            status: "completed", 
-            progress: 100,
-            currentStep: null,
-            completedAt: new Date().toISOString(),
-            history: newHistory,
-            actualQuantity: batch.targetQuantity * 0.98 // 98% yield for demo
-          }
-        : b
-    ));
-
-    if (addAuditEntry) {
-      addAuditEntry("Batch Completed", `Batch ${batchId} completed (DEMO AUTO-COMPLETE)`, batchId);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Batch Production</h2>
-        <div className="flex space-x-2">
-          <button 
-            onClick={() => setShowCreateBatch(true)}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Batch</span>
-          </button>
-        </div>
       </div>
-
-      {/* Create Batch Modal */}
-      {showCreateBatch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="glass-card max-w-md w-full mx-4">
-            <h3 className="text-xl font-bold mb-4">Create New Batch</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold mb-2">Formula</label>
-                <select
-                  className="w-full border rounded px-3 py-2"
-                  value={newBatch.formulaId}
-                  onChange={(e) => setNewBatch(prev => ({ ...prev, formulaId: e.target.value }))}
-                >
-                  <option value="">Select Formula</option>
-                  {formulas.filter(f => f.status === 'approved').map(formula => (
-                    <option key={formula.id} value={formula.id}>
-                      {formula.articleNumber} - {formula.productName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2">Workflow</label>
-                <select
-                  className="w-full border rounded px-3 py-2"
-                  value={newBatch.workflowId}
-                  onChange={(e) => setNewBatch(prev => ({ ...prev, workflowId: e.target.value }))}
-                >
-                  <option value="">Select Workflow</option>
-                  {workflows.map(workflow => (
-                    <option key={workflow.id} value={workflow.id}>
-                      {workflow.name} ({workflow.steps?.length || 0} steps)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2">Target Quantity</label>
-                <input
-                  type="number"
-                  className="w-full border rounded px-3 py-2"
-                  value={newBatch.targetQuantity}
-                  onChange={(e) => setNewBatch(prev => ({ ...prev, targetQuantity: e.target.value }))}
-                  placeholder="Enter quantity"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2">Priority</label>
-                <select
-                  className="w-full border rounded px-3 py-2"
-                  value={newBatch.priority}
-                  onChange={(e) => setNewBatch(prev => ({ ...prev, priority: e.target.value }))}
-                >
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex space-x-2 mt-6">
-              <button
-                onClick={createNewBatch}
-                className="btn-primary flex-1"
-              >
-                Create Batch
-              </button>
-              <button
-                onClick={() => setShowCreateBatch(false)}
-                className="btn-secondary flex-1"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       
-      {/* Batches List */}
       {batches.map(batch => {
         const formula = formulas.find(f => f.id === batch.formulaId);
         const workflow = workflows.find(w => w.id === batch.workflowId);
@@ -269,17 +35,7 @@ export default function Batches({
               onClick={() => setExpandedBatch(isExpanded ? null : batch.id)}
             >
               <div className="flex-1">
-                <div className="flex items-center space-x-3">
-                  <h3 className="text-xl font-bold">{batch.id}</h3>
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                    batch.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                    batch.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                    batch.priority === 'normal' ? 'bg-blue-100 text-blue-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {(batch.priority || 'normal').toUpperCase()}
-                  </span>
-                </div>
+                <h3 className="text-xl font-bold">{batch.id}</h3>
                 <p className="text-gray-600">{formula?.productName} - {formula?.articleNumber}</p>
                 <p className="text-sm text-gray-500">Target: {batch.targetQuantity} units</p>
                 {batch.status === "in_progress" && currentStep && (
@@ -293,12 +49,11 @@ export default function Batches({
               </div>
               <div className="text-right">
                 <div className={`px-4 py-2 rounded-lg font-semibold ${
-                  (batch.status || 'ready') === "completed" ? "bg-green-100 text-green-800" :
-                  (batch.status || 'ready') === "in_progress" ? "bg-blue-100 text-blue-800" :
-                  (batch.status || 'ready') === "ready" ? "bg-yellow-100 text-yellow-800" :
+                  batch.status === "completed" ? "bg-green-100 text-green-800" :
+                  batch.status === "in_progress" ? "bg-blue-100 text-blue-800" :
                   "bg-gray-100 text-gray-800"
                 }`}>
-                  {(batch.status || 'ready').toUpperCase()}
+                  {batch.status.toUpperCase()}
                 </div>
                 <div className="mt-2">
                   <div className="w-32 bg-gray-200 rounded-full h-2">
@@ -312,81 +67,23 @@ export default function Batches({
               </div>
             </div>
 
-            {/* Batch Action Buttons */}
-            {batch.status === "ready" && (
+            {batch.status === "ready" && currentUser.role === "Planner" && (
               <div className="mt-4 pt-4 border-t">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const qty = prompt("Enter target quantity:", batch.targetQuantity);
-                      if (qty) handleStartProduction(batch.id, parseInt(qty));
-                    }}
-                    className="btn-primary flex items-center space-x-2"
-                  >
-                    <Play className="w-4 h-4" />
-                    <span>Start Production</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      quickStartBatch(batch.id);
-                    }}
-                    className="btn-secondary flex items-center space-x-2"
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span>Quick Start</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {batch.status === "in_progress" && (
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (window.confirm('Complete all remaining steps automatically? (Demo feature)')) {
-                        completeBatchDemo(batch.id);
-                      }
-                    }}
-                    className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 flex items-center space-x-2"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Auto-Complete (Demo)</span>
-                  </button>
-                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const qty = prompt("Enter target quantity:");
+                    if (qty) startBatchProduction(batch.id, parseInt(qty));
+                  }}
+                  className="btn-primary"
+                >
+                  Start Production
+                </button>
               </div>
             )}
 
             {isExpanded && (
               <div className="mt-6 pt-6 border-t space-y-6">
-                {/* Batch Info */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-semibold">Created:</span> {new Date(batch.createdAt).toLocaleString()}
-                  </div>
-                  <div>
-                    <span className="font-semibold">Created By:</span> {batch.createdBy}
-                  </div>
-                  {batch.startedAt && (
-                    <>
-                      <div>
-                        <span className="font-semibold">Started:</span> {new Date(batch.startedAt).toLocaleString()}
-                      </div>
-                      <div>
-                        <span className="font-semibold">Started By:</span> {batch.startedBy}
-                      </div>
-                    </>
-                  )}
-                  {batch.completedAt && (
-                    <div className="col-span-2">
-                      <span className="font-semibold">Completed:</span> {new Date(batch.completedAt).toLocaleString()}
-                    </div>
-                  )}
-                </div>
-
                 {batch.status === "in_progress" && (
                   <div>
                     <h4 className="font-semibold text-lg mb-4 flex items-center">
@@ -403,7 +100,7 @@ export default function Batches({
                       return (
                         <div 
                           key={step.id}
-                          className={`p-4 rounded-lg border-2 mb-3 ${
+                          className={`p-4 rounded-lg border-2 ${
                             completed ? "bg-green-50 border-green-300" :
                             isCurrent ? "bg-blue-50 border-blue-400" :
                             "bg-gray-50 border-gray-200 opacity-50"
@@ -619,20 +316,6 @@ export default function Batches({
           </div>
         );
       })}
-      
-      {batches.length === 0 && (
-        <div className="glass-card text-center py-12">
-          <Beaker className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-600 mb-2">No Batches Created</h3>
-          <p className="text-gray-500 mb-4">Create your first batch to start production</p>
-          <button 
-            onClick={() => setShowCreateBatch(true)}
-            className="btn-primary"
-          >
-            Create First Batch
-          </button>
-        </div>
-      )}
     </div>
   );
 }
