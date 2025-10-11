@@ -1,26 +1,1029 @@
-import React from 'react';
-import { Plus, Trash2, Save, CheckCircle, ChevronDown, ChevronUp, Eye, Edit3, GitBranch, Play, Square, Circle, Settings, Diamond } from 'lucide-react';
+import React, { useState, useEffect, useRef } from "react";
+import { 
+  Plus, Trash2, Save, CheckCircle, ChevronDown, ChevronUp, 
+  GitBranch, Play, Pause, Circle, Square, Link, AlertTriangle 
+} from "lucide-react";
 
-// Встроенный визуальный редактор для Pharma workflow
-const VisualWorkflowEditor = ({ 
-  workflow = {}, 
-  onWorkflowChange = () => {}, 
-  formulas = [], 
-  equipment = [], 
-  workStations = [] 
+/* -------------------------------------------------------------------------- */
+/*                         ЧАСТЬ 1:  СИНХРОНИЗАЦИЯ                          */
+/* -------------------------------------------------------------------------- */
+
+// Конвертация таблицы → граф
+export const stepsToGraph = (workflow) => {
+  if (!workflow?.steps) return workflow;
+
+  const nodes = [];
+  const edges = [];
+
+  // создаём узлы
+  workflow.steps.forEach((step, idx) => {
+    const node = {
+      id: `node_${step.id}`,
+      type: step.type || "process",
+      name: step.name || `Step ${idx + 1}`,
+      position: step.position || { x: 400, y: 150 + idx * 120 },
+      data: {
+        ...step,
+        allowManualOverride: step.allowManualOverride ?? true,
+      },
+    };
+    nodes.push(node);
+  });
+
+  // создаём связи
+  workflow.steps.forEach((step) => {
+    if (step.nextStepId) {
+      const next = workflow.steps.find((s) => s.id === step.nextStepId);
+      if (next) {
+        edges.push({
+          id: `edge_${step.id}_${next.id}`,
+          source: `node_${step.id}`,
+          target: `node_${next.id}`,
+          type:
+            step.transition?.mode === "conditional"
+              ? "conditional"
+              : step.transition?.mode === "rework"
+              ? "rework"
+              : "default",
+          label:
+            step.transition?.mode === "conditional"
+              ? step.transition?.condition?.type || "Condition"
+              : step.transition?.mode === "rework"
+              ? "Rework"
+              : "",
+        });
+      }
+    }
+
+    // rework loop
+    if (step.reworkTargetId) {
+      const reworkTarget = workflow.steps.find(
+        (s) => s.id === step.reworkTargetId
+      );
+      if (reworkTarget) {
+        edges.push({
+          id: `edge_rework_${step.id}_${reworkTarget.id}`,
+          source: `node_${step.id}`,
+          target: `node_${reworkTarget.id}`,
+          type: "rework",
+          label: "Rework Loop",
+        });
+      }
+    }
+
+    // параллельные ветки
+    if (step.parallelTargets && step.parallelTargets.length > 0) {
+      step.parallelTargets.forEach((targetId, i) => {
+        const target = workflow.steps.find((s) => s.id === targetId);
+        if (target) {
+          edges.push({
+            id: `edge_parallel_${step.id}_${target.id}_${i}`,
+            source: `node_${step.id}`,
+            target: `node_${target.id}`,
+            type: "parallel",
+            label: `Branch ${i + 1}`,
+          });
+        }
+      });
+    }
+  });
+
+  return { ...workflow, nodes, edges };
+};
+
+// Конвертация графа → таблица
+export const graphToSteps = (workflow) => {
+  if (!workflow?.nodes) return workflow;
+  const steps = workflow.nodes.map((n) => ({
+    id: parseInt(n.id.replace("node_", "")),
+    name: n.name,
+    type: n.type,
+    position: n.position,
+    transition: n.data?.transition || { mode: "automatic" },
+    nextStepId: n.data?.nextStepId || null,
+    reworkTargetId: n.data?.reworkTargetId || null,
+    parallelTargets: n.data?.parallelTargets || [],
+    allowManualOverride: n.data?.allowManualOverride ?? true,
+  }));
+  return { ...workflow, steps };
+};
+
+// Синхронизация из таблицы (источник правды)
+export const syncFromTable = (workflows, setWorkflows, workflowId) => {
+  const wf = workflows.find((w) => w.id === workflowId);
+  if (!wf) return;
+  const migrated = stepsToGraph(wf);
+  setWorkflows((prev) =>
+    prev.map((w) => (w.id === workflowId ? migrated : w))
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*        дальше — ЧАСТЬ 2: табличный редактор (WorkflowsTableInline)        */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*           ЧАСТЬ 2: Табличный редактор (источник правды = таблица)         */
+/* -------------------------------------------------------------------------- */
+
+const WorkflowsTableInline = ({
+  workflows = [],
+  setWorkflows = () => {},
+  formulas = [],
+  equipment = [],
+  workStations = [],
+  addAuditEntry = () => {},
+  language = "ru",
+  editingWorkflow = null,
+  setEditingWorkflow = () => {},
 }) => {
-  const [selectedNode, setSelectedNode] = React.useState(null);
-  const [selectedEdge, setSelectedEdge] = React.useState(null);
-  const [draggedNode, setDraggedNode] = React.useState(null);
-  const [isConnecting, setIsConnecting] = React.useState(false);
-  const [connectionStart, setConnectionStart] = React.useState(null);
-  const [dragOffset, setDragOffset] = React.useState({ x: 0, y: 0 });
-  const [editMode, setEditMode] = React.useState('select');
-  const [zoom, setZoom] = React.useState(1);
-  const [pan, setPan] = React.useState({ x: 0, y: 0 });
-  const svgRef = React.useRef(null);
+  const [expandedWorkflow, setExpandedWorkflow] = useState(null);
 
-  // Pharma-специфичные типы узлов
+  // Обновить конкретный workflow по id
+  const updateWorkflow = (workflowId, patchOrFn) => {
+    setWorkflows((prev) =>
+      prev.map((w) => {
+        if (w.id !== workflowId) return w;
+        const next =
+          typeof patchOrFn === "function" ? patchOrFn(w) : { ...w, ...patchOrFn };
+        return next;
+      })
+    );
+  };
+
+  // Синхронизировать граф из таблицы (пересобрать nodes/edges)
+  const rebuildGraph = (workflowId) => {
+    // на основе текущих workflows получаем wf и пересобираем
+    const wf = workflows.find((w) => w.id === workflowId);
+    if (!wf) return;
+    const migrated = stepsToGraph(wf);
+    setWorkflows((prev) => prev.map((w) => (w.id === workflowId ? migrated : w)));
+  };
+
+  // Утилита для получения списка шагов (для select-ов next/rework/parallel)
+  const stepsOptions = (wf) =>
+    (wf.steps || []).map((s) => ({
+      value: s.id,
+      label: s.name || `Step ${s.id}`,
+    }));
+
+  // Добавление шага
+  const addWorkflowStep = (workflowId) => {
+    const now = Date.now();
+    const newStep = {
+      id: now,
+      name: "Новый шаг",
+      type: "process", // process | weighing | dispensing | qc | mixing
+      instruction: "",
+      stepParameters: {},
+      qcParameters: {},
+
+      equipmentId: null,
+      workStationId: null,
+      formulaBomId: null,
+
+      // Переходы
+      nextStepId: null, // для automatic/manual/conditional
+      reworkTargetId: null, // для rework
+      parallelTargets: [], // для parallel
+      transition: {
+        mode: "automatic", // automatic | conditional | manual | rework | parallel
+        allowManualOverride: true,
+        condition: {
+          type: "qc_result", // qc_result | time_elapsed | equipment_signal | custom
+          qcParam: "weight",
+          expected: "pass",
+          minutes: 10,
+          signalCode: "",
+          formula: "",
+        },
+      },
+
+      // Позиция для визуального (если уже сохранили/таскали)
+      position: { x: 400, y: 150 },
+    };
+
+    updateWorkflow(workflowId, (w) => {
+      const steps = [...(w.steps || []), newStep];
+      return { ...w, steps };
+    });
+
+    addAuditEntry("Workflow Modified", `Step added to workflow`);
+  };
+
+  // Удаление шага
+  const deleteStep = (workflowId, stepId) => {
+    updateWorkflow(workflowId, (w) => {
+      const steps = (w.steps || []).filter((s) => s.id !== stepId);
+
+      // Обновим ссылки next/rework/parallel у остальных шагов
+      const cleaned = steps.map((s) => {
+        const nextStepId = s.nextStepId === stepId ? null : s.nextStepId;
+        const reworkTargetId = s.reworkTargetId === stepId ? null : s.reworkTargetId;
+        const parallelTargets = Array.isArray(s.parallelTargets)
+          ? s.parallelTargets.filter((id) => id !== stepId)
+          : [];
+        return { ...s, nextStepId, reworkTargetId, parallelTargets };
+      });
+
+      return { ...w, steps: cleaned };
+    });
+    addAuditEntry("Workflow Modified", `Step removed from workflow`);
+  };
+
+  // Сохранить и закрыть редактор конкретного workflow
+  const saveAndClose = (workflowId) => {
+    // Пересобираем граф из таблицы (таблица — источник правды)
+    rebuildGraph(workflowId);
+
+    // Закрываем редактор
+    setEditingWorkflow(null);
+    addAuditEntry("Workflow Saved", `Workflow ${workflowId} saved`);
+  };
+
+  // Переключение expand/collapse
+  const toggleExpand = (workflowId) => {
+    setExpandedWorkflow((prev) => (prev === workflowId ? null : workflowId));
+  };
+
+  // Обертки для обновления полей шага
+  const patchStep = (workflowId, stepId, updater) => {
+    updateWorkflow(workflowId, (w) => ({
+      ...w,
+      steps: (w.steps || []).map((s) => (s.id === stepId ? updater(s) : s)),
+    }));
+  };
+
+  return (
+    <div className="glass-card overflow-hidden bg-white rounded-xl border border-slate-200 shadow-sm">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 border-b">
+          <tr>
+            <th className="py-2 px-2 text-left font-semibold text-xs">Name</th>
+            <th className="py-2 px-2 text-left font-semibold text-xs">Formula</th>
+            <th className="py-2 px-2 text-left font-semibold text-xs">Version</th>
+            <th className="py-2 px-2 text-left font-semibold text-xs">Steps</th>
+            <th className="py-2 px-2 text-left font-semibold text-xs">Status</th>
+            <th className="py-2 px-2 text-left font-semibold text-xs">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {workflows.map((wf, idx) => {
+            const selectedFormula = formulas.find((f) => f.id === wf.formulaId);
+            const isEditing = editingWorkflow === wf.id;
+            const isExpanded = expandedWorkflow === wf.id;
+
+            return (
+              <React.Fragment key={wf.id}>
+                <tr
+                  className={`border-b hover:bg-slate-50 transition ${
+                    idx % 2 ? "bg-slate-50/40" : ""
+                  }`}
+                >
+                  <td className="py-2 px-2 text-xs font-semibold">{wf.name}</td>
+                  <td className="py-2 px-2 text-xs">
+                    {selectedFormula?.productName || "—"}
+                  </td>
+                  <td className="py-2 px-2 text-xs">{wf.version}</td>
+                  <td className="py-2 px-2 text-xs">{wf.steps?.length || 0}</td>
+                  <td className="py-2 px-2">
+                    <select
+                      value={wf.status}
+                      onChange={(e) =>
+                        updateWorkflow(wf.id, { status: e.target.value })
+                      }
+                      className={`text-xs px-2 py-1 rounded font-semibold ${
+                        wf.status === "approved"
+                          ? "bg-green-100 text-green-800"
+                          : wf.status === "review"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="review">Review</option>
+                      <option value="approved">Approved</option>
+                    </select>
+                  </td>
+                  <td className="py-2 px-2">
+                    <div className="flex space-x-1">
+                      <button
+                        onClick={() =>
+                          setEditingWorkflow(isEditing ? null : wf.id)
+                        }
+                        className="p-1 hover:bg-blue-50 rounded text-blue-600"
+                        title="Edit"
+                      >
+                        {isEditing ? (
+                          <Save className="w-3 h-3" />
+                        ) : (
+                          <CheckCircle className="w-3 h-3" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => toggleExpand(wf.id)}
+                        className="p-1 hover:bg-slate-100 rounded"
+                        title="Details"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-3 h-3" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3" />
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                {(isEditing || isExpanded) && (
+                  <tr>
+                    <td colSpan="6" className="bg-slate-50 py-3 px-3">
+                      {isEditing ? (
+                        <div className="space-y-4">
+                          {/* Основная информация */}
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-xs font-semibold mb-1">
+                                Название
+                              </label>
+                              <input
+                                className="border rounded px-2 py-1 w-full text-xs"
+                                value={wf.name}
+                                onChange={(e) =>
+                                  updateWorkflow(wf.id, { name: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold mb-1">
+                                Формула
+                              </label>
+                              <select
+                                className="border rounded px-2 py-1 w-full text-xs"
+                                value={wf.formulaId || ""}
+                                onChange={(e) =>
+                                  updateWorkflow(wf.id, {
+                                    formulaId: parseInt(e.target.value) || null,
+                                  })
+                                }
+                              >
+                                <option value="">Не выбрано</option>
+                                {formulas.map((f) => (
+                                  <option key={f.id} value={f.id}>
+                                    {f.productName}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold mb-1">
+                                Версия
+                              </label>
+                              <input
+                                className="border rounded px-2 py-1 w-full text-xs"
+                                value={wf.version}
+                                onChange={(e) =>
+                                  updateWorkflow(wf.id, { version: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          {/* Шаги */}
+                          <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <label className="font-semibold text-xs">
+                                Шаги процесса
+                              </label>
+                              <button
+                                onClick={() => addWorkflowStep(wf.id)}
+                                className="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
+                              >
+                                + Добавить шаг
+                              </button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {(wf.steps || []).map((step, idx) => (
+                                <div
+                                  key={step.id}
+                                  className="border rounded p-3 bg-white"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="text-xs text-slate-500">
+                                      ID: {step.id}
+                                    </div>
+                                    <button
+                                      onClick={() => deleteStep(wf.id, step.id)}
+                                      className="text-red-600 hover:bg-red-100 p-1 rounded"
+                                      title="Удалить шаг"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+
+                                  <div className="grid grid-cols-6 gap-2 items-start">
+                                    <div>
+                                      <label className="block text-xs mb-1">
+                                        Название
+                                      </label>
+                                      <input
+                                        className="border rounded px-2 py-1 w-full text-xs"
+                                        value={step.name}
+                                        onChange={(e) =>
+                                          patchStep(wf.id, step.id, (s) => ({
+                                            ...s,
+                                            name: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs mb-1">
+                                        Тип
+                                      </label>
+                                      <select
+                                        className="border rounded px-2 py-1 w-full text-xs"
+                                        value={step.type}
+                                        onChange={(e) =>
+                                          patchStep(wf.id, step.id, (s) => ({
+                                            ...s,
+                                            type: e.target.value,
+                                          }))
+                                        }
+                                      >
+                                        <option value="process">Process</option>
+                                        <option value="weighing">Weighing</option>
+                                        <option value="dispensing">Dispensing</option>
+                                        <option value="qc">QC</option>
+                                        <option value="mixing">Mixing</option>
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs mb-1">
+                                        Оборудование
+                                      </label>
+                                      <select
+                                        className="border rounded px-2 py-1 w-full text-xs"
+                                        value={step.equipmentId || ""}
+                                        onChange={(e) =>
+                                          patchStep(wf.id, step.id, (s) => ({
+                                            ...s,
+                                            equipmentId:
+                                              parseInt(e.target.value) || null,
+                                          }))
+                                        }
+                                      >
+                                        <option value="">—</option>
+                                        {equipment.map((eq) => (
+                                          <option key={eq.id} value={eq.id}>
+                                            {eq.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs mb-1">
+                                        Станция
+                                      </label>
+                                      <select
+                                        className="border rounded px-2 py-1 w-full text-xs"
+                                        value={step.workStationId || ""}
+                                        onChange={(e) =>
+                                          patchStep(wf.id, step.id, (s) => ({
+                                            ...s,
+                                            workStationId:
+                                              parseInt(e.target.value) || null,
+                                          }))
+                                        }
+                                      >
+                                        <option value="">—</option>
+                                        {workStations.map((ws) => (
+                                          <option key={ws.id} value={ws.id}>
+                                            {ws.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <div className="col-span-2">
+                                      <label className="block text-xs mb-1">
+                                        Инструкция
+                                      </label>
+                                      <textarea
+                                        className="border rounded px-2 py-1 w-full text-xs"
+                                        rows="1"
+                                        value={step.instruction || ""}
+                                        onChange={(e) =>
+                                          patchStep(wf.id, step.id, (s) => ({
+                                            ...s,
+                                            instruction: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+
+                                    {/* QC блок (если тип QC) */}
+                                    {step.type === "qc" && (
+                                      <>
+                                        <div>
+                                          <label className="block text-xs mb-1">
+                                            QC Param
+                                          </label>
+                                          <input
+                                            className="border rounded px-2 py-1 w-full text-xs"
+                                            value={step.qcParameters?.parameter || ""}
+                                            onChange={(e) =>
+                                              patchStep(wf.id, step.id, (s) => ({
+                                                ...s,
+                                                qcParameters: {
+                                                  ...(s.qcParameters || {}),
+                                                  parameter: e.target.value,
+                                                },
+                                              }))
+                                            }
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs mb-1">
+                                            Min
+                                          </label>
+                                          <input
+                                            type="number"
+                                            className="border rounded px-2 py-1 w-full text-xs"
+                                            value={step.qcParameters?.min ?? ""}
+                                            onChange={(e) =>
+                                              patchStep(wf.id, step.id, (s) => ({
+                                                ...s,
+                                                qcParameters: {
+                                                  ...(s.qcParameters || {}),
+                                                  min: parseFloat(e.target.value),
+                                                },
+                                              }))
+                                            }
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs mb-1">
+                                            Max
+                                          </label>
+                                          <input
+                                            type="number"
+                                            className="border rounded px-2 py-1 w-full text-xs"
+                                            value={step.qcParameters?.max ?? ""}
+                                            onChange={(e) =>
+                                              patchStep(wf.id, step.id, (s) => ({
+                                                ...s,
+                                                qcParameters: {
+                                                  ...(s.qcParameters || {}),
+                                                  max: parseFloat(e.target.value),
+                                                },
+                                              }))
+                                            }
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {/* ПЕРЕХОДЫ */}
+                                  <div className="mt-3 border-t pt-3">
+                                    <div className="grid grid-cols-6 gap-2 items-start">
+                                      <div>
+                                        <label className="block text-xs mb-1">
+                                          Transition Mode
+                                        </label>
+                                        <select
+                                          className="border rounded px-2 py-1 w-full text-xs"
+                                          value={step.transition?.mode || "automatic"}
+                                          onChange={(e) =>
+                                            patchStep(wf.id, step.id, (s) => ({
+                                              ...s,
+                                              transition: {
+                                                ...(s.transition || {}),
+                                                mode: e.target.value,
+                                              },
+                                            }))
+                                          }
+                                        >
+                                          <option value="automatic">automatic</option>
+                                          <option value="manual">manual</option>
+                                          <option value="conditional">conditional</option>
+                                          <option value="rework">rework</option>
+                                          <option value="parallel">parallel</option>
+                                        </select>
+                                      </div>
+
+                                      {/* Next Step (для automatic/manual/conditional) */}
+                                      {["automatic", "manual", "conditional"].includes(
+                                        step.transition?.mode || "automatic"
+                                      ) && (
+                                        <div>
+                                          <label className="block text-xs mb-1">
+                                            Next Step
+                                          </label>
+                                          <select
+                                            className="border rounded px-2 py-1 w-full text-xs"
+                                            value={step.nextStepId || ""}
+                                            onChange={(e) =>
+                                              patchStep(wf.id, step.id, (s) => ({
+                                                ...s,
+                                                nextStepId: e.target.value
+                                                  ? parseInt(e.target.value)
+                                                  : null,
+                                              }))
+                                            }
+                                          >
+                                            <option value="">
+                                              (auto by order / END)
+                                            </option>
+                                            {stepsOptions(wf)
+                                              .filter((o) => o.value !== step.id)
+                                              .map((o) => (
+                                                <option key={o.value} value={o.value}>
+                                                  {o.label}
+                                                </option>
+                                              ))}
+                                          </select>
+                                        </div>
+                                      )}
+
+                                      {/* Rework target */}
+                                      {step.transition?.mode === "rework" && (
+                                        <div>
+                                          <label className="block text-xs mb-1">
+                                            Rework Target
+                                          </label>
+                                          <select
+                                            className="border rounded px-2 py-1 w-full text-xs"
+                                            value={step.reworkTargetId || ""}
+                                            onChange={(e) =>
+                                              patchStep(wf.id, step.id, (s) => ({
+                                                ...s,
+                                                reworkTargetId: e.target.value
+                                                  ? parseInt(e.target.value)
+                                                  : null,
+                                              }))
+                                            }
+                                          >
+                                            <option value="">—</option>
+                                            {stepsOptions(wf)
+                                              .filter((o) => o.value !== step.id)
+                                              .map((o) => (
+                                                <option key={o.value} value={o.value}>
+                                                  {o.label}
+                                                </option>
+                                              ))}
+                                          </select>
+                                        </div>
+                                      )}
+
+                                      {/* Parallel (multi-select chips) */}
+                                      {step.transition?.mode === "parallel" && (
+                                        <div className="col-span-2">
+                                          <label className="block text-xs mb-1">
+                                            Parallel Targets
+                                          </label>
+                                          <div className="flex flex-wrap gap-1">
+                                            {stepsOptions(wf)
+                                              .filter((o) => o.value !== step.id)
+                                              .map((o) => {
+                                                const selected = Array.isArray(
+                                                  step.parallelTargets
+                                                )
+                                                  ? step.parallelTargets.includes(o.value)
+                                                  : false;
+                                                return (
+                                                  <button
+                                                    type="button"
+                                                    key={o.value}
+                                                    onClick={() =>
+                                                      patchStep(wf.id, step.id, (s) => {
+                                                        const set = new Set(
+                                                          s.parallelTargets || []
+                                                        );
+                                                        if (selected) set.delete(o.value);
+                                                        else set.add(o.value);
+                                                        return {
+                                                          ...s,
+                                                          parallelTargets: Array.from(set),
+                                                        };
+                                                      })
+                                                    }
+                                                    className={`px-2 py-1 rounded text-xs border ${
+                                                      selected
+                                                        ? "bg-blue-600 text-white border-blue-600"
+                                                        : "bg-white border-slate-300 hover:bg-slate-100"
+                                                    }`}
+                                                  >
+                                                    {o.label}
+                                                  </button>
+                                                );
+                                              })}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Manual override */}
+                                      <div>
+                                        <label className="block text-xs mb-1">
+                                          Manual Override
+                                        </label>
+                                        <select
+                                          className="border rounded px-2 py-1 w-full text-xs"
+                                          value={
+                                            (step.transition?.allowManualOverride ??
+                                              true) === true
+                                              ? "yes"
+                                              : "no"
+                                          }
+                                          onChange={(e) =>
+                                            patchStep(wf.id, step.id, (s) => ({
+                                              ...s,
+                                              transition: {
+                                                ...(s.transition || {}),
+                                                allowManualOverride:
+                                                  e.target.value === "yes",
+                                              },
+                                            }))
+                                          }
+                                        >
+                                          <option value="yes">allowed</option>
+                                          <option value="no">forbidden</option>
+                                        </select>
+                                      </div>
+
+                                      {/* Condition editor (если conditional) */}
+                                      {step.transition?.mode === "conditional" && (
+                                        <>
+                                          <div>
+                                            <label className="block text-xs mb-1">
+                                              Cond. Type
+                                            </label>
+                                            <select
+                                              className="border rounded px-2 py-1 w-full text-xs"
+                                              value={
+                                                step.transition?.condition?.type ||
+                                                "qc_result"
+                                              }
+                                              onChange={(e) =>
+                                                patchStep(wf.id, step.id, (s) => ({
+                                                  ...s,
+                                                  transition: {
+                                                    ...(s.transition || {}),
+                                                    condition: {
+                                                      ...(s.transition?.condition || {}),
+                                                      type: e.target.value,
+                                                    },
+                                                  },
+                                                }))
+                                              }
+                                            >
+                                              <option value="qc_result">qc_result</option>
+                                              <option value="time_elapsed">
+                                                time_elapsed
+                                              </option>
+                                              <option value="equipment_signal">
+                                                equipment_signal
+                                              </option>
+                                              <option value="custom">custom</option>
+                                            </select>
+                                          </div>
+
+                                          {/* qc_result */}
+                                          {step.transition?.condition?.type ===
+                                            "qc_result" && (
+                                            <>
+                                              <div>
+                                                <label className="block text-xs mb-1">
+                                                  QC Param
+                                                </label>
+                                                <input
+                                                  className="border rounded px-2 py-1 w-full text-xs"
+                                                  value={
+                                                    step.transition?.condition?.qcParam ||
+                                                    ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    patchStep(wf.id, step.id, (s) => ({
+                                                      ...s,
+                                                      transition: {
+                                                        ...(s.transition || {}),
+                                                        condition: {
+                                                          ...(s.transition?.condition ||
+                                                            {}),
+                                                          qcParam: e.target.value,
+                                                        },
+                                                      },
+                                                    }))
+                                                  }
+                                                />
+                                              </div>
+                                              <div>
+                                                <label className="block text-xs mb-1">
+                                                  Expected
+                                                </label>
+                                                <select
+                                                  className="border rounded px-2 py-1 w-full text-xs"
+                                                  value={
+                                                    step.transition?.condition?.expected ||
+                                                    "pass"
+                                                  }
+                                                  onChange={(e) =>
+                                                    patchStep(wf.id, step.id, (s) => ({
+                                                      ...s,
+                                                      transition: {
+                                                        ...(s.transition || {}),
+                                                        condition: {
+                                                          ...(s.transition?.condition ||
+                                                            {}),
+                                                          expected: e.target.value,
+                                                        },
+                                                      },
+                                                    }))
+                                                  }
+                                                >
+                                                  <option value="pass">pass</option>
+                                                  <option value="fail">fail</option>
+                                                </select>
+                                              </div>
+                                            </>
+                                          )}
+
+                                          {/* time_elapsed */}
+                                          {step.transition?.condition?.type ===
+                                            "time_elapsed" && (
+                                            <div>
+                                              <label className="block text-xs mb-1">
+                                                Minutes
+                                              </label>
+                                              <input
+                                                type="number"
+                                                className="border rounded px-2 py-1 w-full text-xs"
+                                                value={
+                                                  step.transition?.condition?.minutes ||
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  patchStep(wf.id, step.id, (s) => ({
+                                                    ...s,
+                                                    transition: {
+                                                      ...(s.transition || {}),
+                                                      condition: {
+                                                        ...(s.transition?.condition || {}),
+                                                        minutes: parseInt(
+                                                          e.target.value || "0",
+                                                          10
+                                                        ),
+                                                      },
+                                                    },
+                                                  }))
+                                                }
+                                              />
+                                            </div>
+                                          )}
+
+                                          {/* equipment_signal */}
+                                          {step.transition?.condition?.type ===
+                                            "equipment_signal" && (
+                                            <div>
+                                              <label className="block text-xs mb-1">
+                                                Signal Code
+                                              </label>
+                                              <input
+                                                className="border rounded px-2 py-1 w-full text-xs"
+                                                value={
+                                                  step.transition?.condition?.signalCode ||
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  patchStep(wf.id, step.id, (s) => ({
+                                                    ...s,
+                                                    transition: {
+                                                      ...(s.transition || {}),
+                                                      condition: {
+                                                        ...(s.transition?.condition || {}),
+                                                        signalCode: e.target.value,
+                                                      },
+                                                    },
+                                                  }))
+                                                }
+                                              />
+                                            </div>
+                                          )}
+
+                                          {/* custom */}
+                                          {step.transition?.condition?.type ===
+                                            "custom" && (
+                                            <div className="col-span-2">
+                                              <label className="block text-xs mb-1">
+                                                Formula
+                                              </label>
+                                              <input
+                                                className="border rounded px-2 py-1 w-full text-xs"
+                                                placeholder="temperature > 30 && ph < 7"
+                                                value={
+                                                  step.transition?.condition?.formula || ""
+                                                }
+                                                onChange={(e) =>
+                                                  patchStep(wf.id, step.id, (s) => ({
+                                                    ...s,
+                                                    transition: {
+                                                      ...(s.transition || {}),
+                                                      condition: {
+                                                        ...(s.transition?.condition || {}),
+                                                        formula: e.target.value,
+                                                      },
+                                                    },
+                                                  }))
+                                                }
+                                              />
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => saveAndClose(wf.id)}
+                              className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
+                            >
+                              Сохранить и закрыть
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs space-y-2">
+                          <div>
+                            <strong>Создан:</strong> {wf.createdDate}
+                          </div>
+                          <div>
+                            <strong>Шаги:</strong>{" "}
+                            {(wf.steps || []).map((s, i) => (
+                              <span
+                                key={s.id}
+                                className="inline-block bg-slate-200 rounded px-2 py-0.5 mr-1"
+                              >
+                                {i + 1}. {s.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+/* -------------------------------------------------------------------------- */
+/*      ЧАСТЬ 3: Визуальный редактор (drag & drop + настройка переходов)     */
+/* -------------------------------------------------------------------------- */
+
+const VisualWorkflowEditor = ({
+  workflow = {},
+  onWorkflowChange = () => {},
+  formulas = [],
+  equipment = [],
+  workStations = []
+}) => {
+  const svgRef = useRef(null);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedEdge, setSelectedEdge] = useState(null);
+  const [draggingNodeId, setDraggingNodeId] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // UI state для панели инструментов (правый сайдбар)
+  const [transitionUi, setTransitionUi] = useState({
+    mode: 'automatic',           // automatic | manual | conditional | rework | parallel
+    nextStepId: '',
+    reworkTargetId: '',
+    parallelTargets: [],
+    condition: {
+      type: 'qc_result',         // qc_result | time_elapsed | equipment_signal | custom
+      qcParam: 'weight',
+      expected: 'pass',
+      minutes: 10,
+      signalCode: '',
+      formula: ''
+    }
+  });
+
+  // -------------------- визуальные типы узлов --------------------
   const nodeTypes = {
     start: { color: '#059669', bgColor: '#d1fae5', borderColor: '#34d399', label: 'Старт', width: 140, height: 60 },
     weighing: { color: '#7c3aed', bgColor: '#e9d5ff', borderColor: '#a78bfa', label: 'Взвешивание', width: 140, height: 80 },
@@ -34,497 +1037,307 @@ const VisualWorkflowEditor = ({
     end: { color: '#4b5563', bgColor: '#f3f4f6', borderColor: '#d1d5db', label: 'Конец', width: 140, height: 60 }
   };
 
-  // Добавление нового узла
-  const addNode = (type) => {
-    const nodeType = nodeTypes[type];
-    let yPosition = 100;
-    
-    // Находим самый нижний узел для вертикального размещения
-    if (workflow.nodes && workflow.nodes.length > 0) {
-      const maxY = Math.max(...workflow.nodes.map(n => n.position.y));
-      yPosition = maxY + 120;
-    }
-
-    const newNode = {
-      id: `node_${Date.now()}`,
-      type,
-      name: `${nodeType.label} ${workflow.nodes?.length || 1}`,
-      position: { x: 400, y: yPosition },
-      data: {
-        // Pharma-специфичные параметры по умолчанию
-        ...(type === 'weighing' && {
-          target_weight: 100,
-          tolerance: 0.1,
-          unit: 'g',
-          equipmentId: null
-        }),
-        ...(type === 'qc_check' && {
-          qc_type: 'weight',
-          qcParameters: { min: 99.9, max: 100.1, unit: '%' }
-        }),
-        ...(type === 'decision' && {
-          condition: {
-            type: 'qc_result',
-            qc_parameter: 'weight',
-            expected_result: 'pass'
-          }
-        }),
-        ...(type === 'rework' && {
-          max_iterations: 3,
-          rework_procedure: 'Повторить процесс с корректировкой параметров'
-        }),
-        ...(type === 'hold' && {
-          hold_type: 'time',
-          hold_duration: 10
-        })
-      }
-    };
-
-    onWorkflowChange({
-      ...workflow,
-      nodes: [...(workflow.nodes || []), newNode]
-    });
+  // ------------------------- helpers -----------------------------
+  const nodeById = (id) => (workflow.nodes || []).find(n => n.id === id);
+  const stepIdFromNodeId = (nodeId) => {
+    // узлы шага имеют формат node_<stepId>; старт/энд не конвертируем
+    if (!nodeId?.startsWith('node_')) return null;
+    const raw = nodeId.replace('node_', '');
+    const asNum = parseInt(raw, 10);
+    return Number.isFinite(asNum) ? asNum : null;
   };
 
-  // Создание параллельных веток
-  const createParallelBranches = () => {
-    if (!selectedNode) {
-      alert('Выберите узел для создания параллельных веток');
-      return;
-    }
+  const stepById = (stepId) => (workflow.steps || []).find(s => s.id === stepId);
 
-    const selectedNodeObj = (workflow.nodes || []).find(n => n.id === selectedNode);
-    if (!selectedNodeObj) return;
+  const stepsOptions = () =>
+    (workflow.steps || []).map(s => ({ value: s.id, label: s.name || `Step ${s.id}` }));
 
-    const branch1 = {
-      id: `node_${Date.now()}`,
-      type: "weighing",
-      name: "Параллельная ветка A",
-      position: { x: selectedNodeObj.position.x - 100, y: selectedNodeObj.position.y + 120 },
-      data: { target_weight: 50, tolerance: 0.1 }
-    };
-
-    const branch2 = {
-      id: `node_${Date.now() + 1}`,
-      type: "dispensing",
-      name: "Параллельная ветка B", 
-      position: { x: selectedNodeObj.position.x + 100, y: selectedNodeObj.position.y + 120 },
-      data: {}
-    };
-
-    const merge = {
-      id: `node_${Date.now() + 2}`,
-      type: "qc_check",
-      name: "Контроль слияния",
-      position: { x: selectedNodeObj.position.x, y: selectedNodeObj.position.y + 240 },
-      data: { qc_type: 'visual' }
-    };
-
-    const newEdges = [
-      {
-        id: `edge_${Date.now()}`,
-        source: selectedNode,
-        target: branch1.id,
-        type: 'default',
-        label: 'Ветка A'
-      },
-      {
-        id: `edge_${Date.now() + 1}`,
-        source: selectedNode,
-        target: branch2.id,
-        type: 'default',
-        label: 'Ветка B'
-      },
-      {
-        id: `edge_${Date.now() + 2}`,
-        source: branch1.id,
-        target: merge.id,
-        type: 'default',
-        label: ''
-      },
-      {
-        id: `edge_${Date.now() + 3}`,
-        source: branch2.id,
-        target: merge.id,
-        type: 'default',
-        label: ''
-      }
-    ];
-
-    onWorkflowChange({
-      ...workflow,
-      nodes: [...(workflow.nodes || []), branch1, branch2, merge],
-      edges: [...(workflow.edges || []), ...newEdges]
-    });
+  // перенос позиций узлов при пересборке графа после правок переходов
+  const mergePositions = (oldWf, newWf) => {
+    const posMap = new Map((oldWf.nodes || []).map(n => [n.id, n.position]));
+    const nodes = (newWf.nodes || []).map(n =>
+      posMap.has(n.id) ? { ...n, position: posMap.get(n.id) } : n
+    );
+    return { ...newWf, nodes };
   };
 
-  // Создание Rework петли
-  const createReworkLoop = () => {
-    if (!selectedNode) {
-      alert('Выберите узел для создания Rework петли');
-      return;
+  const conditionLabel = (cond) => {
+    if (!cond) return '';
+    switch (cond.type) {
+      case 'qc_result': return `QC ${cond.qcParam || ''}=${cond.expected || 'pass'}`.trim();
+      case 'time_elapsed': return `Timer ${cond.minutes || 0}m`;
+      case 'equipment_signal': return `Signal ${cond.signalCode || ''}`.trim();
+      case 'custom': return cond.formula || 'custom';
+      default: return 'cond';
     }
-
-    const selectedNodeObj = (workflow.nodes || []).find(n => n.id === selectedNode);
-    if (!selectedNodeObj) return;
-
-    const qcCheck = {
-      id: `node_${Date.now()}`,
-      type: "qc_check",
-      name: "QC Проверка",
-      position: { x: selectedNodeObj.position.x, y: selectedNodeObj.position.y + 120 },
-      data: { qc_type: 'weight' }
-    };
-
-    const decision = {
-      id: `node_${Date.now() + 1}`,
-      type: "decision",
-      name: "Результат OK?",
-      position: { x: selectedNodeObj.position.x, y: selectedNodeObj.position.y + 220 },
-      data: {
-        condition: {
-          type: 'qc_result',
-          qc_parameter: 'weight',
-          expected_result: 'pass'
-        }
-      }
-    };
-
-    const rework = {
-      id: `node_${Date.now() + 2}`,
-      type: "rework", 
-      name: "Переработка",
-      position: { x: selectedNodeObj.position.x + 180, y: selectedNodeObj.position.y + 120 },
-      data: {
-        max_iterations: 3,
-        rework_procedure: 'Повторить с корректировкой параметров'
-      }
-    };
-
-    const newEdges = [
-      {
-        id: `edge_${Date.now()}`,
-        source: selectedNode,
-        target: qcCheck.id,
-        type: 'default',
-        label: ''
-      },
-      {
-        id: `edge_${Date.now() + 1}`,
-        source: qcCheck.id,
-        target: decision.id,
-        type: 'default',
-        label: ''
-      },
-      {
-        id: `edge_${Date.now() + 2}`,
-        source: decision.id,
-        target: rework.id,
-        type: 'conditional',
-        label: 'Fail',
-        condition: 'qc_result === "fail"'
-      },
-      {
-        id: `edge_${Date.now() + 3}`,
-        source: rework.id,
-        target: selectedNode,
-        type: 'default',
-        label: 'Rework'
-      }
-    ];
-
-    onWorkflowChange({
-      ...workflow,
-      nodes: [...(workflow.nodes || []), qcCheck, decision, rework],
-      edges: [...(workflow.edges || []), ...newEdges]
-    });
   };
 
-  // Обработка перетаскивания узла
-  const handleNodeMouseDown = (e, node) => {
-    if (editMode !== 'select') return;
-    
+  // -------------------- drag & drop --------------------
+  const onNodeMouseDown = (e, node) => {
+    // старт/end тоже двигаем (можно запретить, если хочешь)
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    
+    setDraggingNodeId(node.id);
     setDragOffset({
       x: e.clientX - rect.left - node.position.x,
       y: e.clientY - rect.top - node.position.y
     });
-    setDraggedNode(node.id);
   };
 
-  const handleMouseMove = (e) => {
-    if (!draggedNode || !svgRef.current) return;
-    
+  const onMouseMove = (e) => {
+    if (!draggingNodeId || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
     const newX = e.clientX - rect.left - dragOffset.x;
     const newY = e.clientY - rect.top - dragOffset.y;
 
-    onWorkflowChange({
+    // обновляем позицию узла в nodes + в steps.position (для персистентности)
+    const updated = {
       ...workflow,
-      nodes: (workflow.nodes || []).map(node =>
-        node.id === draggedNode
-          ? { ...node, position: { x: newX, y: newY } }
-          : node
+      nodes: (workflow.nodes || []).map(n =>
+        n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n
       )
-    });
-  };
+    };
 
-  const handleMouseUp = () => {
-    setDraggedNode(null);
-  };
-
-  // Обработка кликов на узлы
-  const handleNodeClick = (node) => {
-    if (editMode === 'select') {
-      setSelectedNode(node.id);
-      setSelectedEdge(null);
-    } else if (editMode === 'connect') {
-      handleConnectionStart(node.id);
-    } else if (editMode === 'delete') {
-      if (node.type !== 'start' && node.type !== 'end') {
-        deleteNode(node.id);
-      }
+    const movedStepId = stepIdFromNodeId(draggingNodeId);
+    if (movedStepId) {
+      updated.steps = (workflow.steps || []).map(s =>
+        s.id === movedStepId ? { ...s, position: { x: newX, y: newY } } : s
+      );
     }
+
+    onWorkflowChange(updated);
   };
 
-  // Создание связей
-  const handleConnectionStart = (nodeId) => {
-    if (editMode !== 'connect') return;
+  const onMouseUp = () => setDraggingNodeId(null);
 
-    if (isConnecting) {
-      if (connectionStart && connectionStart !== nodeId) {
-        const newEdge = {
-          id: `edge_${Date.now()}`,
-          source: connectionStart,
-          target: nodeId,
-          type: 'default',
-          label: ''
-        };
-
-        onWorkflowChange({
-          ...workflow,
-          edges: [...(workflow.edges || []), newEdge]
-        });
-      }
-      setIsConnecting(false);
-      setConnectionStart(null);
-    } else {
-      setIsConnecting(true);
-      setConnectionStart(nodeId);
-    }
-  };
-
-  // Удаление узла
-  const deleteNode = (nodeId) => {
-    onWorkflowChange({
-      ...workflow,
-      nodes: (workflow.nodes || []).filter(n => n.id !== nodeId),
-      edges: (workflow.edges || []).filter(e => e.source !== nodeId && e.target !== nodeId)
-    });
+  // -------------------- выбор на схеме --------------------
+  const onCanvasClick = () => {
     setSelectedNode(null);
-  };
-
-  // Удаление связи
-  const deleteEdge = (edgeId) => {
-    onWorkflowChange({
-      ...workflow,
-      edges: (workflow.edges || []).filter(e => e.id !== edgeId)
-    });
     setSelectedEdge(null);
   };
 
-  // Рендер узла
-  const renderNode = (node) => {
-    const nodeType = nodeTypes[node.type];
-    const isSelected = selectedNode === node.id;
-    const isConnectingFrom = connectionStart === node.id;
+  const onNodeClick = (node) => {
+    setSelectedNode(node.id);
+    setSelectedEdge(null);
 
-    if (!nodeType) return null;
-
-    return (
-      <g key={node.id} transform={`translate(${node.position.x}, ${node.position.y})`}>
-        {/* Тень узла */}
-        <rect
-          width={nodeType.width}
-          height={nodeType.height}
-          rx="12"
-          fill="#00000015"
-          transform="translate(3, 3)"
-        />
-        
-        {/* Основной узел */}
-        <rect
-          width={nodeType.width}
-          height={nodeType.height}
-          rx="12"
-          fill={nodeType.bgColor}
-          stroke={isSelected ? '#3b82f6' : isConnectingFrom ? '#10b981' : nodeType.borderColor}
-          strokeWidth={isSelected || isConnectingFrom ? '3' : '2'}
-          className="cursor-move transition-all duration-200"
-          onMouseDown={(e) => handleNodeMouseDown(e, node)}
-          onClick={() => handleNodeClick(node)}
-        />
-        
-        {/* Цветная полоска сверху */}
-        <rect
-          width={nodeType.width}
-          height="4"
-          rx="12"
-          fill={nodeType.color}
-        />
-        
-        {/* Иконка и тип */}
-        <g transform="translate(12, 16)">
-          <circle r="16" fill={nodeType.color} fillOpacity="0.2" />
-          <text x="16" y="20" textAnchor="middle" className="text-sm font-bold" fill={nodeType.color}>
-            {node.type === 'start' ? '▶' : 
-             node.type === 'end' ? '■' :
-             node.type === 'weighing' ? '⚖' :
-             node.type === 'qc_check' ? '🔍' :
-             node.type === 'dispensing' ? '⚗' :
-             node.type === 'mixing' ? '🌀' :
-             node.type === 'decision' ? '◆' : 
-             node.type === 'rework' ? '🔄' :
-             node.type === 'equipment_check' ? '🔧' :
-             node.type === 'hold' ? '⏸' : '⚙'}
-          </text>
-        </g>
-        
-        {/* Название */}
-        <text
-          x={nodeType.width / 2}
-          y="40"
-          textAnchor="middle"
-          className="text-sm font-semibold pointer-events-none"
-          fill="#374151"
-        >
-          {node.name.length > 16 ? node.name.substring(0, 16) + '...' : node.name}
-        </text>
-        
-        {/* Параметры узла */}
-        {node.data && Object.keys(node.data).length > 0 && (
-          <text
-            x={nodeType.width / 2}
-            y="56"
-            textAnchor="middle"
-            className="text-xs pointer-events-none"
-            fill="#6b7280"
-          >
-            {node.type === 'weighing' && `${node.data.target_weight || 0}g ±${node.data.tolerance || 0}%`}
-            {node.type === 'qc_check' && `${node.data.qc_type || 'check'}`}
-            {node.type === 'decision' && `${node.data.condition?.type || 'condition'}`}
-            {node.type === 'rework' && `max: ${node.data.max_iterations || 3}`}
-            {node.type === 'hold' && `${node.data.hold_duration || 10}min`}
-          </text>
-        )}
-        
-        {/* Точки подключения */}
-        <circle
-          cx={nodeType.width / 2}
-          cy="0"
-          r="8"
-          fill="white"
-          stroke={nodeType.color}
-          strokeWidth="2"
-          className="cursor-pointer hover:fill-blue-50"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (editMode === 'connect') handleConnectionStart(node.id);
-          }}
-        />
-        <circle
-          cx={nodeType.width / 2}
-          cy={nodeType.height}
-          r="8"
-          fill="white"
-          stroke={nodeType.color}
-          strokeWidth="2"
-          className="cursor-pointer hover:fill-blue-50"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (editMode === 'connect') handleConnectionStart(node.id);
-          }}
-        />
-        
-        {/* Индикатор выбора */}
-        {isSelected && (
-          <circle
-            cx={nodeType.width - 10}
-            cy="10"
-            r="4"
-            fill="#3b82f6"
-            className="animate-pulse"
-          />
-        )}
-      </g>
-    );
+    // заполняем правую панель актуальными данными шага
+    const sid = stepIdFromNodeId(node.id);
+    if (!sid) return;
+    const st = stepById(sid);
+    const ui = {
+      mode: st?.transition?.mode || 'automatic',
+      nextStepId: st?.nextStepId || '',
+      reworkTargetId: st?.reworkTargetId || '',
+      parallelTargets: st?.parallelTargets || [],
+      condition: {
+        type: st?.transition?.condition?.type || 'qc_result',
+        qcParam: st?.transition?.condition?.qcParam || 'weight',
+        expected: st?.transition?.condition?.expected || 'pass',
+        minutes: st?.transition?.condition?.minutes || 10,
+        signalCode: st?.transition?.condition?.signalCode || '',
+        formula: st?.transition?.condition?.formula || ''
+      }
+    };
+    setTransitionUi(ui);
   };
 
-  // Рендер связи
+  const onEdgeClick = (edge) => {
+    setSelectedEdge(edge.id);
+    setSelectedNode(null);
+  };
+
+  // -------------------- изменение переходов через UI справа --------------------
+
+  // Применить текущие настройки панели переходов к выбранному шагу
+  const applyTransition = () => {
+    if (!selectedNode) return;
+    const sid = stepIdFromNodeId(selectedNode);
+    if (!sid) return;
+
+    // обновляем шаг
+    const updatedSteps = (workflow.steps || []).map(s => {
+      if (s.id !== sid) return s;
+
+      const next = { ...s };
+
+      // сбросим все поля перед установкой режима (чтобы не было мусора)
+      next.nextStepId = null;
+      next.reworkTargetId = null;
+      next.parallelTargets = [];
+      next.transition = {
+        ...(s.transition || {}),
+        mode: transitionUi.mode,
+        allowManualOverride: s.transition?.allowManualOverride ?? true,
+        condition: { ...(transitionUi.condition) }
+      };
+
+      if (['automatic', 'manual', 'conditional'].includes(transitionUi.mode)) {
+        next.nextStepId = transitionUi.nextStepId ? parseInt(transitionUi.nextStepId, 10) : null;
+      }
+      if (transitionUi.mode === 'rework') {
+        next.reworkTargetId = transitionUi.reworkTargetId ? parseInt(transitionUi.reworkTargetId, 10) : null;
+      }
+      if (transitionUi.mode === 'parallel') {
+        next.parallelTargets = Array.isArray(transitionUi.parallelTargets)
+          ? transitionUi.parallelTargets.map(x => parseInt(x, 10)).filter(Boolean)
+          : [];
+      }
+
+      return next;
+    });
+
+    // пересобираем граф (таблица -> nodes/edges), но переносим текущие позиции
+    const newWfFromTable = stepsToGraph({ ...workflow, steps: updatedSteps });
+    const merged = mergePositions(workflow, newWfFromTable);
+
+    onWorkflowChange(merged);
+  };
+
+  // очистить переходы у выбранного шага
+  const clearTransitions = () => {
+    if (!selectedNode) return;
+    const sid = stepIdFromNodeId(selectedNode);
+    if (!sid) return;
+
+    const updatedSteps = (workflow.steps || []).map(s => {
+      if (s.id !== sid) return s;
+      return {
+        ...s,
+        nextStepId: null,
+        reworkTargetId: null,
+        parallelTargets: [],
+        transition: {
+          ...(s.transition || {}),
+          mode: 'automatic',
+          condition: {
+            type: 'qc_result',
+            qcParam: 'weight',
+            expected: 'pass',
+            minutes: 10,
+            signalCode: '',
+            formula: ''
+          }
+        }
+      };
+    });
+    const newWf = stepsToGraph({ ...workflow, steps: updatedSteps });
+    const merged = mergePositions(workflow, newWf);
+    onWorkflowChange(merged);
+  };
+
+  // быстрые кнопки: назначить next = выбранной цели
+  const quickSetNext = (targetNodeId, mode = 'automatic') => {
+    if (!selectedNode) return;
+    const sid = stepIdFromNodeId(selectedNode);
+    const tid = stepIdFromNodeId(targetNodeId);
+    if (!sid || !tid) return;
+
+    const updatedSteps = (workflow.steps || []).map(s => {
+      if (s.id !== sid) return s;
+      return {
+        ...s,
+        nextStepId: tid,
+        reworkTargetId: s.reworkTargetId || null,
+        parallelTargets: s.parallelTargets || [],
+        transition: {
+          ...(s.transition || {}),
+          mode,
+          condition: s.transition?.condition || {
+            type: 'qc_result',
+            qcParam: 'weight',
+            expected: 'pass',
+            minutes: 10,
+            signalCode: '',
+            formula: ''
+          }
+        }
+      };
+    });
+
+    const newWf = stepsToGraph({ ...workflow, steps: updatedSteps });
+    const merged = mergePositions(workflow, newWf);
+    onWorkflowChange(merged);
+  };
+
+  // быстрые кнопки: добавить parallel к выбранному таргету
+  const quickAddParallel = (targetNodeId) => {
+    if (!selectedNode) return;
+    const sid = stepIdFromNodeId(selectedNode);
+    const tid = stepIdFromNodeId(targetNodeId);
+    if (!sid || !tid) return;
+
+    const updatedSteps = (workflow.steps || []).map(s => {
+      if (s.id !== sid) return s;
+      const set = new Set(s.parallelTargets || []);
+      set.add(tid);
+      return {
+        ...s,
+        transition: { ...(s.transition || {}), mode: 'parallel', condition: s.transition?.condition },
+        parallelTargets: Array.from(set)
+      };
+    });
+
+    const newWf = stepsToGraph({ ...workflow, steps: updatedSteps });
+    const merged = mergePositions(workflow, newWf);
+    onWorkflowChange(merged);
+  };
+
+  // быстрые кнопки: назначить rework target
+  const quickSetRework = (targetNodeId) => {
+    if (!selectedNode) return;
+    const sid = stepIdFromNodeId(selectedNode);
+    const tid = stepIdFromNodeId(targetNodeId);
+    if (!sid || !tid) return;
+
+    const updatedSteps = (workflow.steps || []).map(s => {
+      if (s.id !== sid) return s;
+      return {
+        ...s,
+        transition: { ...(s.transition || {}), mode: 'rework', condition: s.transition?.condition },
+        reworkTargetId: tid
+      };
+    });
+
+    const newWf = stepsToGraph({ ...workflow, steps: updatedSteps });
+    const merged = mergePositions(workflow, newWf);
+    onWorkflowChange(merged);
+  };
+
+  // -------------------- рендер рёбер --------------------
   const renderEdge = (edge) => {
-    const sourceNode = (workflow.nodes || []).find(n => n.id === edge.source);
-    const targetNode = (workflow.nodes || []).find(n => n.id === edge.target);
-    
+    const sourceNode = nodeById(edge.source);
+    const targetNode = nodeById(edge.target);
     if (!sourceNode || !targetNode) return null;
 
-    const sourceType = nodeTypes[sourceNode.type];
-    const targetType = nodeTypes[targetNode.type];
-    
-    const x1 = sourceNode.position.x + (sourceType?.width || 140) / 2;
-    const y1 = sourceNode.position.y + (sourceType?.height || 80);
-    const x2 = targetNode.position.x + (targetType?.width || 140) / 2;
+    const sourceType = nodeTypes[sourceNode.type] || { width: 140, height: 80 };
+    const targetType = nodeTypes[targetNode.type] || { width: 140, height: 80 };
+    const x1 = sourceNode.position.x + (sourceType.width || 140) / 2;
+    const y1 = sourceNode.position.y + (sourceType.height || 80);
+    const x2 = targetNode.position.x + (targetType.width || 140) / 2;
     const y2 = targetNode.position.y;
 
     const isSelected = selectedEdge === edge.id;
-    const edgeColor = edge.type === 'conditional' ? '#f59e0b' :
-                     edge.type === 'error' ? '#ef4444' :
-                     isSelected ? '#3b82f6' : '#64748b';
+    let edgeColor = '#64748b';
+    let dash = 'none';
+    if (edge.type === 'conditional') { edgeColor = '#f59e0b'; dash = '8,4'; }
+    if (edge.type === 'rework') { edgeColor = '#ef4444'; dash = '4,3'; }
+    if (edge.type === 'parallel') { edgeColor = '#2563eb'; dash = '2,3'; }
 
     return (
       <g key={edge.id}>
         <line
-          x1={x1}
-          y1={y1}
-          x2={x2}
-          y2={y2}
+          x1={x1} y1={y1} x2={x2} y2={y2}
           stroke={edgeColor}
           strokeWidth={isSelected ? "4" : "2"}
           markerEnd="url(#arrowhead)"
           className="cursor-pointer"
-          strokeDasharray={edge.type === 'conditional' ? '8,4' : 'none'}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (editMode === 'select') {
-              setSelectedEdge(edge.id);
-              setSelectedNode(null);
-            } else if (editMode === 'delete') {
-              deleteEdge(edge.id);
-            }
-          }}
+          strokeDasharray={dash}
+          onClick={(e) => { e.stopPropagation(); onEdgeClick(edge); }}
         />
-        
         {edge.label && (
           <g transform={`translate(${(x1 + x2) / 2}, ${(y1 + y2) / 2})`}>
-            <rect
-              x="-20"
-              y="-8"
-              width="40"
-              height="16"
-              rx="8"
-              fill="white"
-              stroke={edgeColor}
-              strokeWidth="1"
-            />
-            <text
-              x="0"
-              y="0"
-              textAnchor="middle"
-              alignmentBaseline="central"
-              className="text-xs font-medium"
-              fill={edgeColor}
-            >
+            <rect x="-32" y="-9" width="64" height="18" rx="8" fill="white" stroke={edgeColor} strokeWidth="1" />
+            <text x="0" y="0" textAnchor="middle" alignmentBaseline="central" className="text-xs font-medium" fill={edgeColor}>
               {edge.label}
             </text>
           </g>
@@ -533,818 +1346,492 @@ const VisualWorkflowEditor = ({
     );
   };
 
+  // -------------------- рендер узлов --------------------
+  const renderNode = (node) => {
+    const nodeType = nodeTypes[node.type] || { width: 140, height: 80, bgColor: '#fff', borderColor: '#e5e7eb', color: '#94a3b8', label: node.type };
+    const isSelected = selectedNode === node.id;
+
+    return (
+      <g key={node.id} transform={`translate(${node.position.x}, ${node.position.y})`}>
+        {/* тень */}
+        <rect width={nodeType.width} height={nodeType.height} rx="12" fill="#00000015" transform="translate(3,3)" />
+        {/* сам прямоугольник */}
+        <rect
+          width={nodeType.width}
+          height={nodeType.height}
+          rx="12"
+          fill={nodeType.bgColor}
+          stroke={isSelected ? '#3b82f6' : nodeType.borderColor}
+          strokeWidth={isSelected ? '3' : '2'}
+          className="cursor-move transition-all duration-150"
+          onMouseDown={(e) => onNodeMouseDown(e, node)}
+          onClick={(e) => { e.stopPropagation(); onNodeClick(node); }}
+        />
+        {/* полоска сверху */}
+        <rect width={nodeType.width} height="4" rx="12" fill={nodeType.color} />
+        {/* иконка */}
+        <g transform="translate(12,16)">
+          <circle r="16" fill={nodeType.color} fillOpacity="0.2" />
+          <text x="16" y="20" textAnchor="middle" className="text-sm font-bold" fill={nodeType.color}>
+            {node.type === 'start' ? '▶' :
+             node.type === 'end' ? '■' :
+             node.type === 'weighing' ? '⚖' :
+             node.type === 'qc_check' ? '🔍' :
+             node.type === 'dispensing' ? '⚗' :
+             node.type === 'mixing' ? '🌀' :
+             node.type === 'decision' ? '◆' :
+             node.type === 'rework' ? '🔄' :
+             node.type === 'equipment_check' ? '🔧' :
+             node.type === 'hold' ? '⏸' : '⚙'}
+          </text>
+        </g>
+        {/* имя */}
+        <text x={nodeType.width / 2} y="40" textAnchor="middle" className="text-sm font-semibold pointer-events-none" fill="#374151">
+          {node.name?.length > 18 ? node.name.substring(0, 18) + '…' : node.name}
+        </text>
+        {/* бейдж transition */}
+        {node.data?.transition && (
+          <g transform={`translate(${nodeType.width - 12},${nodeType.height - 12})`}>
+            <circle r="8" fill="#fff" stroke="#94a3b8" />
+            <text x="0" y="3" textAnchor="middle" fontSize="10" fill="#64748b">
+              {node.data.transition.mode === 'conditional' ? '?' :
+               node.data.transition.mode === 'rework' ? 'R' :
+               node.data.transition.mode === 'parallel' ? '⫴' :
+               node.data.transition.mode === 'manual' ? '⚡' : '→'}
+            </text>
+          </g>
+        )}
+      </g>
+    );
+  };
+
+  // -------------------- рендер --------------------
   return (
-    <div className="h-full flex bg-gradient-to-br from-slate-50 to-white">
-      {/* Панель инструментов */}
-      <div className="w-80 bg-white border-r border-slate-200 p-6 space-y-6 overflow-y-auto">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-            <GitBranch className="w-4 h-4 text-white" />
-          </div>
-          <h3 className="font-semibold text-lg text-slate-800">Pharma Process Designer</h3>
-        </div>
-        
-        {/* Панель режимов */}
-        <div className="bg-slate-50 rounded-xl p-4">
-          <h4 className="font-medium text-sm text-slate-700 mb-3">Режим работы</h4>
-          <div className="space-y-2">
-            {[
-              { mode: 'select', label: 'Выбор/Перемещение', emoji: '🎯', color: 'blue' },
-              { mode: 'connect', label: 'Создание связей', emoji: '🔗', color: 'emerald' },
-              { mode: 'delete', label: 'Удаление', emoji: '🗑️', color: 'red' }
-            ].map(({ mode, label, emoji, color }) => (
-              <button
-                key={mode}
-                onClick={() => {
-                  setEditMode(mode);
-                  setIsConnecting(false);
-                  setConnectionStart(null);
-                }}
-                className={`w-full p-3 text-left rounded-lg transition-all duration-200 border-2 ${
-                  editMode === mode 
-                    ? `bg-${color}-50 text-${color}-700 border-${color}-200 shadow-sm` 
-                    : 'hover:bg-slate-100 text-slate-600 border-transparent'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <span className="text-lg">{emoji}</span>
-                  <span className="font-medium text-sm">{label}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-        
-        {/* Элементы процесса */}
-        <div className="space-y-3">
-          <h4 className="font-medium text-sm text-slate-700 mb-3">Элементы процесса</h4>
-          {Object.entries(nodeTypes).map(([type, config]) => (
-            <button
-              key={type}
-              onClick={() => addNode(type)}
-              className="w-full p-3 rounded-lg text-white font-medium flex items-center space-x-3 hover:opacity-90 transition-all duration-200 shadow-md border-2 border-white/30"
-              style={{ 
-                backgroundColor: config.color,
-                boxShadow: `0 4px 12px ${config.color}20`
-              }}
-            >
-              <span className="text-lg bg-white/30 w-8 h-8 rounded-lg flex items-center justify-center text-sm">
-                {type === 'start' ? '▶' : 
-                 type === 'end' ? '■' :
-                 type === 'weighing' ? '⚖' :
-                 type === 'qc_check' ? '🔍' :
-                 type === 'dispensing' ? '⚗' :
-                 type === 'mixing' ? '🌀' :
-                 type === 'decision' ? '◆' : 
-                 type === 'rework' ? '🔄' :
-                 type === 'equipment_check' ? '🔧' :
-                 type === 'hold' ? '⏸' : '⚙'}
-              </span>
-              <span className="text-sm font-semibold">{config.label}</span>
-            </button>
-          ))}
+    <div className="h-full relative overflow-hidden">
+      {/* Левая панель подсказки */}
+      <div className="absolute top-4 left-4 z-10 bg-white/95 border border-slate-200 rounded-xl shadow p-3 text-xs text-slate-600">
+        <div className="font-semibold text-slate-800 mb-2">Подсказки</div>
+        <ul className="space-y-1 list-disc pl-4">
+          <li>Перемещайте узлы мышкой (drag & drop)</li>
+          <li>Клик по узлу — настройки переходов справа</li>
+          <li>Серые связи — обычные, оранжевые — conditional, синие — parallel, красные — rework</li>
+        </ul>
+      </div>
+
+      {/* Правая панель инструментов для выбранного узла */}
+      <div className="absolute top-0 right-0 h-full w-80 bg-white border-l border-slate-200 p-4 overflow-y-auto">
+        <div className="flex items-center space-x-2 mb-3">
+          <div className="w-6 h-6 bg-blue-100 rounded-lg grid place-items-center text-blue-600 text-sm">⚙</div>
+          <div className="font-semibold text-slate-800">Настройки переходов</div>
         </div>
 
-        {/* Pharma шаблоны */}
-        <div className="bg-slate-50 rounded-xl p-4">
-          <h4 className="font-medium text-sm text-slate-700 mb-3">Pharma Шаблоны</h4>
-          <div className="space-y-2">
-            <button
-              onClick={createParallelBranches}
-              className="w-full p-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg hover:from-emerald-600 hover:to-teal-600 transition-all duration-200 text-sm font-medium"
-            >
-              Параллельные ветки
-            </button>
-            <button
-              onClick={createReworkLoop}
-              className="w-full p-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 text-sm font-medium"
-            >
-              Rework петля
-            </button>
+        {!selectedNode && (
+          <div className="text-slate-500 text-sm">
+            Выберите узел на схеме, чтобы отредактировать переходы.
           </div>
-        </div>
-
-        {/* Настройки выбранного элемента */}
-        {selectedNode && (
-          <NodePropertiesPanel 
-            node={(workflow.nodes || []).find(n => n.id === selectedNode)}
-            formulas={formulas}
-            equipment={equipment}
-            workStations={workStations}
-            onNodeUpdate={(updatedNode) => {
-              onWorkflowChange({
-                ...workflow,
-                nodes: (workflow.nodes || []).map(n => 
-                  n.id === selectedNode ? updatedNode : n
-                )
-              });
-            }}
-            onDelete={() => deleteNode(selectedNode)}
-          />
         )}
 
-        {/* Панель редактирования связи */}
-        {selectedEdge && (
-          <div className="bg-slate-50 rounded-xl p-4">
-            <h4 className="font-semibold text-slate-800 mb-4">Настройки связи</h4>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Название связи</label>
-                <input
-                  type="text"
-                  value={(workflow.edges || []).find(e => e.id === selectedEdge)?.label || ''}
-                  onChange={(e) => {
-                    onWorkflowChange({
-                      ...workflow,
-                      edges: (workflow.edges || []).map(edge =>
-                        edge.id === selectedEdge ? { ...edge, label: e.target.value } : edge
-                      )
-                    });
-                  }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Pass, Fail, Rework..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Тип связи</label>
+        {selectedNode && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              Узел: <span className="font-mono">{selectedNode}</span>
+            </div>
+
+            {/* MODE */}
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-slate-700 mb-1">Transition Mode</label>
+              <select
+                className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs"
+                value={transitionUi.mode}
+                onChange={(e) => setTransitionUi(prev => ({ ...prev, mode: e.target.value }))}
+              >
+                <option value="automatic">automatic</option>
+                <option value="manual">manual</option>
+                <option value="conditional">conditional</option>
+                <option value="rework">rework</option>
+                <option value="parallel">parallel</option>
+              </select>
+            </div>
+
+            {/* next step */}
+            {['automatic','manual','conditional'].includes(transitionUi.mode) && (
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Next Step</label>
                 <select
-                  value={(workflow.edges || []).find(e => e.id === selectedEdge)?.type || 'default'}
-                  onChange={(e) => {
-                    onWorkflowChange({
-                      ...workflow,
-                      edges: (workflow.edges || []).map(edge =>
-                        edge.id === selectedEdge ? { ...edge, type: e.target.value } : edge
-                      )
-                    });
-                  }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs"
+                  value={transitionUi.nextStepId}
+                  onChange={(e) => setTransitionUi(prev => ({ ...prev, nextStepId: e.target.value }))}
                 >
-                  <option value="default">Обычная</option>
-                  <option value="conditional">Условная</option>
-                  <option value="error">Ошибка</option>
+                  <option value="">(auto by order / END)</option>
+                  {stepsOptions().filter(o => `node_${o.value}` !== selectedNode).map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
               </div>
-              
+            )}
+
+            {/* rework */}
+            {transitionUi.mode === 'rework' && (
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Rework Target</label>
+                <select
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs"
+                  value={transitionUi.reworkTargetId}
+                  onChange={(e) => setTransitionUi(prev => ({ ...prev, reworkTargetId: e.target.value }))}
+                >
+                  <option value="">—</option>
+                  {stepsOptions().filter(o => `node_${o.value}` !== selectedNode).map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* parallel */}
+            {transitionUi.mode === 'parallel' && (
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Parallel Targets</label>
+                <div className="flex flex-wrap gap-1">
+                  {stepsOptions().filter(o => `node_${o.value}` !== selectedNode).map(o => {
+                    const selected = (transitionUi.parallelTargets || []).includes(o.value);
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        className={`px-2 py-1 rounded text-xs border ${selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-300 hover:bg-slate-100'}`}
+                        onClick={() => {
+                          setTransitionUi(prev => {
+                            const set = new Set(prev.parallelTargets || []);
+                            if (selected) set.delete(o.value); else set.add(o.value);
+                            return { ...prev, parallelTargets: Array.from(set) };
+                          });
+                        }}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* conditional */}
+            {transitionUi.mode === 'conditional' && (
+              <div className="space-y-2 mb-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Cond. Type</label>
+                  <select
+                    className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs"
+                    value={transitionUi.condition.type}
+                    onChange={(e) => setTransitionUi(prev => ({ ...prev, condition: { ...prev.condition, type: e.target.value } }))}
+                  >
+                    <option value="qc_result">qc_result</option>
+                    <option value="time_elapsed">time_elapsed</option>
+                    <option value="equipment_signal">equipment_signal</option>
+                    <option value="custom">custom</option>
+                  </select>
+                </div>
+
+                {transitionUi.condition.type === 'qc_result' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs mb-1">QC Param</label>
+                      <input
+                        className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
+                        value={transitionUi.condition.qcParam}
+                        onChange={(e) => setTransitionUi(prev => ({ ...prev, condition: { ...prev.condition, qcParam: e.target.value } }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1">Expected</label>
+                      <select
+                        className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
+                        value={transitionUi.condition.expected}
+                        onChange={(e) => setTransitionUi(prev => ({ ...prev, condition: { ...prev.condition, expected: e.target.value } }))}
+                      >
+                        <option value="pass">pass</option>
+                        <option value="fail">fail</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {transitionUi.condition.type === 'time_elapsed' && (
+                  <div>
+                    <label className="block text-xs mb-1">Minutes</label>
+                    <input
+                      type="number"
+                      className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
+                      value={transitionUi.condition.minutes}
+                      onChange={(e) => setTransitionUi(prev => ({ ...prev, condition: { ...prev.condition, minutes: parseInt(e.target.value || '0', 10) } }))}
+                    />
+                  </div>
+                )}
+
+                {transitionUi.condition.type === 'equipment_signal' && (
+                  <div>
+                    <label className="block text-xs mb-1">Signal Code</label>
+                    <input
+                      className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
+                      value={transitionUi.condition.signalCode}
+                      onChange={(e) => setTransitionUi(prev => ({ ...prev, condition: { ...prev.condition, signalCode: e.target.value } }))}
+                    />
+                  </div>
+                )}
+
+                {transitionUi.condition.type === 'custom' && (
+                  <div>
+                    <label className="block text-xs mb-1">Formula</label>
+                    <input
+                      className="w-full border border-slate-300 rounded px-2 py-1 text-xs"
+                      placeholder="temperature > 30 && ph < 7"
+                      value={transitionUi.condition.formula}
+                      onChange={(e) => setTransitionUi(prev => ({ ...prev, condition: { ...prev.condition, formula: e.target.value } }))}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Кнопки применить/очистить */}
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => deleteEdge(selectedEdge)}
-                className="w-full bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition-colors duration-200 font-medium"
+                onClick={applyTransition}
+                className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
               >
-                Удалить связь
+                Применить
+              </button>
+              <button
+                onClick={clearTransitions}
+                className="bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs hover:bg-slate-300"
+              >
+                Очистить
               </button>
             </div>
-          </div>
+
+            {/* Быстрые действия */}
+            <div className="mt-4 border-t pt-3">
+              <div className="text-xs font-semibold text-slate-700 mb-2">Быстрые действия</div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 w-24">Set Next:</span>
+                  <select
+                    className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) quickSetNext(`node_${val}`, 'automatic');
+                    }}
+                    value=""
+                  >
+                    <option value="">— выбрать —</option>
+                    {stepsOptions().filter(o => `node_${o.value}` !== selectedNode).map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 w-24">Set Cond.:</span>
+                  <select
+                    className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) quickSetNext(`node_${val}`, 'conditional');
+                    }}
+                    value=""
+                  >
+                    <option value="">— выбрать —</option>
+                    {stepsOptions().filter(o => `node_${o.value}` !== selectedNode).map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 w-24">Add Parallel:</span>
+                  <select
+                    className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) quickAddParallel(`node_${val}`);
+                    }}
+                    value=""
+                  >
+                    <option value="">— выбрать —</option>
+                    {stepsOptions().filter(o => `node_${o.value}` !== selectedNode).map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 w-24">Set Rework:</span>
+                  <select
+                    className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) quickSetRework(`node_${val}`);
+                    }}
+                    value=""
+                  >
+                    <option value="">— выбрать —</option>
+                    {stepsOptions().filter(o => `node_${o.value}` !== selectedNode).map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
-      {/* Холст для рисования с прокруткой */}
-      <div className="flex-1 relative overflow-auto">
+      {/* Сам канвас */}
+      <div className="h-full w-[calc(100%-20rem)] overflow-auto" onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
         <svg
           ref={svgRef}
           className="w-full min-h-full"
-          style={{ minHeight: '2000px', minWidth: '1200px' }}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onClick={() => {
-            if (isConnecting) {
-              setIsConnecting(false);
-              setConnectionStart(null);
-            }
-            setSelectedNode(null);
-            setSelectedEdge(null);
-          }}
+          style={{ minHeight: '2000px', minWidth: '1400px' }}
+          onClick={onCanvasClick}
         >
           <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="12"
-              markerHeight="8"
-              refX="11"
-              refY="4"
-              orient="auto"
-            >
-              <polygon
-                points="0 0, 12 4, 0 8"
-                fill="#64748b"
-              />
+            <marker id="arrowhead" markerWidth="12" markerHeight="8" refX="11" refY="4" orient="auto">
+              <polygon points="0 0, 12 4, 0 8" fill="#64748b" />
             </marker>
 
             <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
               <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" strokeWidth="1"/>
             </pattern>
-            
             <pattern id="gridLarge" width="100" height="100" patternUnits="userSpaceOnUse">
               <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#e2e8f0" strokeWidth="1"/>
             </pattern>
           </defs>
 
-          {/* Фоновые сетки */}
+          {/* фоновые сетки */}
           <rect width="100%" height="100%" fill="url(#grid)" />
           <rect width="100%" height="100%" fill="url(#gridLarge)" />
 
-          {/* Рендер связей */}
           {(workflow.edges || []).map(renderEdge)}
-
-          {/* Рендер узлов */}
           {(workflow.nodes || []).map(renderNode)}
         </svg>
-
-        {/* Статусная панель */}
-        <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg px-4 py-2 shadow-lg">
-          <div className="flex items-center space-x-4 text-sm text-slate-600">
-            <span>Узлов: {(workflow.nodes || []).length}</span>
-            <span>Связей: {(workflow.edges || []).length}</span>
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${
-                editMode === 'select' ? 'bg-blue-500' :
-                editMode === 'connect' ? 'bg-emerald-500' :
-                'bg-red-500'
-              }`}></div>
-              <span className="capitalize">{
-                editMode === 'select' ? 'Выбор' :
-                editMode === 'connect' ? 'Связи' : 'Удаление'
-              }</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Индикаторы режима работы */}
-        {editMode === 'connect' && isConnecting && (
-          <div className="absolute top-6 left-1/2 transform -translate-x-1/2 bg-emerald-500 text-white px-6 py-3 rounded-full shadow-lg">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              <span className="font-medium">Выберите целевой узел для соединения</span>
-            </div>
-          </div>
-        )}
-        {editMode === 'delete' && (
-          <div className="absolute top-6 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-lg">
-            <span>Режим удаления: кликните на элемент</span>
-          </div>
-        )}
-        {editMode === 'select' && selectedNode && (
-          <div className="absolute top-6 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-6 py-3 rounded-full shadow-lg">
-            <span>Выбран: {(workflow.nodes || []).find(n => n.id === selectedNode)?.name}</span>
-          </div>
-        )}
       </div>
     </div>
   );
 };
+/* -------------------------------------------------------------------------- */
+/*                ЧАСТЬ 4: Объединяющий компонент EnhancedWorkflows           */
+/* -------------------------------------------------------------------------- */
 
-// Панель свойств узла с полными Pharma параметрами
-const NodePropertiesPanel = ({ 
-  node = null, 
-  formulas = [], 
-  equipment = [], 
-  workStations = [], 
-  onNodeUpdate = () => {}, 
-  onDelete = () => {} 
-}) => {
-  if (!node) return null;
-
-  const updateNodeData = (newData) => {
-    onNodeUpdate({
-      ...node,
-      data: { ...node.data, ...newData }
-    });
-  };
-
-  const updateNodeName = (name) => {
-    onNodeUpdate({ ...node, name });
-  };
-
-  return (
-    <div className="bg-slate-50 rounded-xl p-4">
-      <div className="flex items-center space-x-2 mb-4">
-        <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-          <span className="text-blue-600 text-sm">⚙</span>
-        </div>
-        <h4 className="font-semibold text-slate-800">Настройки узла</h4>
-      </div>
-      
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Название</label>
-          <input
-            type="text"
-            value={node.name}
-            onChange={(e) => updateNodeName(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-          />
-        </div>
-
-        {/* Параметры взвешивания */}
-        {node.type === 'weighing' && (
-          <>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Материал для взвешивания</label>
-              <select
-                value={node.data?.materialId || ''}
-                onChange={(e) => updateNodeData({ materialId: parseInt(e.target.value) || null })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              >
-                <option value="">Выберите материал</option>
-                <option value="1">API - Активный компонент</option>
-                <option value="2">Excipient A - Наполнитель</option>
-                <option value="3">Excipient B - Связующее</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Целевой вес (г)</label>
-                <input
-                  type="number"
-                  value={node.data?.target_weight || ''}
-                  onChange={(e) => updateNodeData({ target_weight: parseFloat(e.target.value) })}
-                  className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Допуск (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={node.data?.tolerance || ''}
-                  onChange={(e) => updateNodeData({ tolerance: parseFloat(e.target.value) })}
-                  className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Весы</label>
-                <select
-                  value={node.data?.equipmentId || ''}
-                  onChange={(e) => updateNodeData({ equipmentId: parseInt(e.target.value) || null })}
-                  className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
-                >
-                  <option value="">Выберите</option>
-                  {(equipment || []).filter(eq => eq.class === 'Weighing').map(eq => (
-                    <option key={eq.id} value={eq.id}>{eq.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Параметры QC проверки */}
-        {node.type === 'qc_check' && (
-          <>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Тип проверки</label>
-              <select
-                value={node.data?.qc_type || 'weight'}
-                onChange={(e) => updateNodeData({ qc_type: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              >
-                <option value="weight">Проверка веса</option>
-                <option value="visual">Визуальная проверка</option>
-                <option value="ph">pH измерение</option>
-                <option value="temperature">Температура</option>
-                <option value="moisture">Влажность</option>
-                <option value="hardness">Твердость</option>
-                <option value="disintegration">Распадаемость</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Мин значение</label>
-                <input
-                  type="number"
-                  value={node.data?.qcParameters?.min || ''}
-                  onChange={(e) => updateNodeData({
-                    qcParameters: {
-                      ...node.data?.qcParameters,
-                      min: parseFloat(e.target.value)
-                    }
-                  })}
-                  className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Макс значение</label>
-                <input
-                  type="number"
-                  value={node.data?.qcParameters?.max || ''}
-                  onChange={(e) => updateNodeData({
-                    qcParameters: {
-                      ...node.data?.qcParameters,
-                      max: parseFloat(e.target.value)
-                    }
-                  })}
-                  className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Единица измерения</label>
-              <input
-                type="text"
-                value={node.data?.qcParameters?.unit || ''}
-                onChange={(e) => updateNodeData({
-                  qcParameters: {
-                    ...node.data?.qcParameters,
-                    unit: e.target.value
-                  }
-                })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                placeholder="г, %, мг, мин и т.д."
-              />
-            </div>
-          </>
-        )}
-
-        {/* Параметры условий */}
-        {node.type === 'decision' && (
-          <>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Тип условия</label>
-              <select
-                value={node.data?.condition?.type || 'qc_result'}
-                onChange={(e) => updateNodeData({
-                  condition: {
-                    ...node.data?.condition,
-                    type: e.target.value
-                  }
-                })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              >
-                <option value="qc_result">QC результат</option>
-                <option value="weight_check">Проверка веса</option>
-                <option value="time_elapsed">Время истекло</option>
-                <option value="temperature">Температура</option>
-                <option value="equipment_status">Статус оборудования</option>
-                <option value="step_count">Количество итераций</option>
-                <option value="custom">Пользовательское</option>
-              </select>
-            </div>
-            
-            {node.data?.condition?.type === 'qc_result' && (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Параметр QC</label>
-                  <select
-                    value={node.data?.condition?.qc_parameter || ''}
-                    onChange={(e) => updateNodeData({
-                      condition: {
-                        ...node.data?.condition,
-                        qc_parameter: e.target.value
-                      }
-                    })}
-                    className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
-                  >
-                    <option value="">Выберите</option>
-                    <option value="weight">Вес</option>
-                    <option value="ph">pH</option>
-                    <option value="temperature">Температура</option>
-                    <option value="visual">Визуальный</option>
-                    <option value="hardness">Твердость</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Ожидаемый результат</label>
-                  <select
-                    value={node.data?.condition?.expected_result || 'pass'}
-                    onChange={(e) => updateNodeData({
-                      condition: {
-                        ...node.data?.condition,
-                        expected_result: e.target.value
-                      }
-                    })}
-                    className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
-                  >
-                    <option value="pass">Pass</option>
-                    <option value="fail">Fail</option>
-                  </select>
-                </div>
-              </div>
-            )}
-            
-            {node.data?.condition?.type === 'custom' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Формула условия</label>
-                <textarea
-                  value={node.data?.condition?.formula || ''}
-                  onChange={(e) => updateNodeData({
-                    condition: {
-                      ...node.data?.condition,
-                      formula: e.target.value
-                    }
-                  })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  rows="3"
-                  placeholder="Примеры:
-weight >= target_weight * 0.99
-temperature > 25 && ph_value < 7
-rework_count < max_iterations"
-                />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Параметры переработки */}
-        {node.type === 'rework' && (
-          <>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Максимум итераций</label>
-              <input
-                type="number"
-                value={node.data?.max_iterations || 3}
-                onChange={(e) => updateNodeData({ max_iterations: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Процедура переработки</label>
-              <textarea
-                value={node.data?.rework_procedure || ''}
-                onChange={(e) => updateNodeData({ rework_procedure: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                rows="3"
-                placeholder="1. Проанализировать причину отклонения
-2. Скорректировать параметры процесса  
-3. Повторить операцию"
-              />
-            </div>
-          </>
-        )}
-
-        {/* Параметры ожидания */}
-        {node.type === 'hold' && (
-          <>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Тип ожидания</label>
-              <select
-                value={node.data?.hold_type || 'time'}
-                onChange={(e) => updateNodeData({ hold_type: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              >
-                <option value="time">По времени</option>
-                <option value="temperature">По температуре</option>
-                <option value="manual">Ручное подтверждение</option>
-                <option value="equipment">Готовность оборудования</option>
-              </select>
-            </div>
-            
-            {node.data?.hold_type === 'time' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Время ожидания (мин)</label>
-                <input
-                  type="number"
-                  value={node.data?.hold_duration || ''}
-                  onChange={(e) => updateNodeData({ hold_duration: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Общие параметры */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Инструкция</label>
-          <textarea
-            value={node.data?.instruction || ''}
-            onChange={(e) => updateNodeData({ instruction: e.target.value })}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            rows="3"
-            placeholder="Подробная инструкция для выполнения операции..."
-          />
-        </div>
-
-        <button
-          onClick={onDelete}
-          className="w-full bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition-colors duration-200 font-medium"
-        >
-          Удалить узел
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export default function EnhancedWorkflows({ 
-  workflows = [], 
-  setWorkflows = () => {}, 
+export default function EnhancedWorkflows({
+  workflows = [],
+  setWorkflows = () => {},
   formulas = [],
   equipment = [],
   workStations = [],
   addAuditEntry = () => {},
-  language = 'en'
+  language = "ru"
 }) {
-  
-  const [editingWorkflow, setEditingWorkflow] = React.useState(null);
-  const [expandedWorkflow, setExpandedWorkflow] = React.useState(null);
-  const [viewMode, setViewMode] = React.useState('visual'); // Только визуальный режим
-  
-  const t = (key) => {
-    const translations = {
-      en: {
-        workflowConfiguration: "Workflow Configuration",
-        newWorkflow: "New Workflow",
-        name: "Name",
-        formula: "Formula",
-        version: "Version",
-        steps: "Steps",
-        status: "Status",
-        actions: "Actions",
-        details: "Details",
-        visualEditor: "Visual Editor",
-        nodes: "Nodes",
-        connections: "Connections"
-      },
-      ru: {
-        workflowConfiguration: "Конфигурация процессов",
-        newWorkflow: "Новый процесс",
-        name: "Название",
-        formula: "Формула",
-        version: "Версия", 
-        steps: "Шаги",
-        status: "Статус",
-        actions: "Действия",
-        details: "Подробности",
-        visualEditor: "Визуальный редактор",
-        nodes: "Узлы",
-        connections: "Связи"
-      }
-    };
-    return translations[language]?.[key] || translations['en'][key] || key;
-  };
-  
-  // Конвертация старой структуры в новую для совместимости
-  const migrateWorkflowToNodes = (workflow = {}) => {
-    if (!workflow || (workflow.nodes && workflow.nodes.length > 0)) {
-      return workflow;
-    }
+  const [editingWorkflow, setEditingWorkflow] = useState(null);
+  const [viewMode, setViewMode] = useState("table"); // "table" | "visual"
+  const [activeWorkflowId, setActiveWorkflowId] = useState(null);
 
-    const nodes = [
-      {
-        id: `node_start_${workflow.id || Date.now()}`,
-        type: "start",
-        name: "Начало процесса",
-        position: { x: 400, y: 50 },
-        data: {}
-      }
-    ];
-
-    const edges = [];
-    let lastNodeId = `node_start_${workflow.id || Date.now()}`;
-    let yPosition = 150;
-
-    (workflow.steps || []).forEach((step, index) => {
-      const nodeId = `node_${step.id}`;
-      const nodeType = step.type === 'qc' ? 'qc_check' : 
-                       step.type === 'dispensing' ? 'dispensing' : 
-                       step.type === 'weighing' ? 'weighing' : 'mixing';
-      
-      nodes.push({
-        id: nodeId,
-        type: nodeType,
-        name: step.name,
-        position: { x: 400, y: yPosition },
-        data: {
-          equipmentId: step.equipmentId,
-          workStationId: step.workStationId,
-          formulaBomId: step.formulaBomId,
-          instruction: step.instruction,
-          parameters: step.stepParameters || {},
-          qcParameters: step.qcParameters || {}
-        }
-      });
-
-      edges.push({
-        id: `edge_${lastNodeId}_${nodeId}`,
-        source: lastNodeId,
-        target: nodeId,
-        type: 'default',
-        label: ''
-      });
-
-      lastNodeId = nodeId;
-      yPosition += 120;
-    });
-
-    const endNodeId = `node_end_${workflow.id || Date.now()}`;
-    nodes.push({
-      id: endNodeId,
-      type: "end",
-      name: "Завершение процесса",
-      position: { x: 400, y: yPosition },
-      data: {}
-    });
-
-    if ((workflow.steps || []).length > 0) {
-      edges.push({
-        id: `edge_${lastNodeId}_${endNodeId}`,
-        source: lastNodeId,
-        target: endNodeId,
-        type: 'default',
-        label: ''
-      });
-    }
-
-    return {
-      ...workflow,
-      nodes,
-      edges
-    };
+  // Вызывается при любом изменении workflow (drag, переходы и т.п.)
+  const onWorkflowChange = (updated) => {
+    setWorkflows((prev) =>
+      prev.map((w) => (w.id === updated.id ? updated : w))
+    );
   };
 
-  const addNewWorkflow = () => {
-    const newWorkflow = {
-      id: Date.now(),
-      name: "Новый Pharma процесс",
-      formulaId: null,
-      version: "0.1",
-      status: "draft",
-      createdDate: new Date().toISOString().split('T')[0],
-      nodes: [
-        {
-          id: `node_start_${Date.now()}`,
-          type: "start",
-          name: "Начало процесса",
-          position: { x: 400, y: 50 },
-          data: {}
-        },
-        {
-          id: `node_end_${Date.now() + 1}`,
-          type: "end", 
-          name: "Завершение процесса",
-          position: { x: 400, y: 300 },
-          data: {}
-        }
-      ],
-      edges: [],
-      steps: []
-    };
-    
-    setWorkflows(prev => [...prev, newWorkflow]);
-    setEditingWorkflow(newWorkflow.id);
-    addAuditEntry("Workflow Created", `New Pharma workflow created`);
+  // Переключение режима
+  const toggleMode = (wfId, mode) => {
+    setActiveWorkflowId(wfId);
+    setViewMode(mode);
   };
+
+  // Текущий workflow для визуального режима
+  const currentWorkflow = workflows.find((w) => w.id === activeWorkflowId);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800">{t('workflowConfiguration')}</h2>
-        <button 
-          className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex items-center space-x-2 font-medium shadow-lg"
-          onClick={addNewWorkflow}
-        >
-          <Plus className="w-5 h-5" />
-          <span>{t('newWorkflow')}</span>
-        </button>
+        <h2 className="text-lg font-semibold text-slate-800">
+          Workflow Designer
+        </h2>
+        {viewMode === "visual" && currentWorkflow && (
+          <button
+            onClick={() => setViewMode("table")}
+            className="bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs px-3 py-1 rounded"
+          >
+            ← К таблице
+          </button>
+        )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-lg text-slate-800">Pharma Process Designer</h3>
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-slate-600">
-                Процессов: {workflows.length}
-              </div>
-              <select 
-                className="border border-slate-300 rounded-lg px-4 py-2 text-sm"
-                value={editingWorkflow || ''}
-                onChange={(e) => setEditingWorkflow(parseInt(e.target.value) || null)}
+      {/* Режим таблицы */}
+      {viewMode === "table" && (
+        <div>
+          <WorkflowsTableInline
+            workflows={workflows}
+            setWorkflows={setWorkflows}
+            formulas={formulas}
+            equipment={equipment}
+            workStations={workStations}
+            addAuditEntry={addAuditEntry}
+            language={language}
+            editingWorkflow={editingWorkflow}
+            setEditingWorkflow={setEditingWorkflow}
+          />
+
+          {/* Кнопки для перехода в визуальный вид */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {workflows.map((wf) => (
+              <button
+                key={wf.id}
+                onClick={() => toggleMode(wf.id, "visual")}
+                className="bg-blue-600 text-white text-xs px-3 py-1 rounded hover:bg-blue-700"
               >
-                <option value="">Выберите процесс для редактирования</option>
-                {workflows.map(wf => (
-                  <option key={wf.id} value={wf.id}>{wf.name}</option>
-                ))}
-              </select>
-            </div>
+                🔍 Открыть схему: {wf.name}
+              </button>
+            ))}
           </div>
         </div>
-        
-        {editingWorkflow && (
-          <div className="h-screen">
-            <VisualWorkflowEditor
-              workflow={migrateWorkflowToNodes(workflows.find(w => w.id === editingWorkflow) || {})}
-              onWorkflowChange={(updatedWorkflow) => {
-                setWorkflows(prev => prev.map(w => 
-                  w.id === editingWorkflow ? updatedWorkflow : w
-                ));
-                addAuditEntry("Workflow Modified", "Pharma workflow updated");
-              }}
-              formulas={formulas}
-              equipment={equipment}
-              workStations={workStations}
-            />
-          </div>
-        )}
+      )}
 
-        {!editingWorkflow && (
-          <div className="p-12 text-center">
-            <GitBranch className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-700 mb-2">Выберите процесс для редактирования</h3>
-            <p className="text-slate-500">
-              Создайте новый процесс или выберите существующий из списка выше
-            </p>
+      {/* Режим визуального редактора */}
+      {viewMode === "visual" && currentWorkflow && (
+        <div className="h-[90vh] border rounded-xl overflow-hidden relative">
+          <div className="absolute top-2 left-2 z-10 flex space-x-2">
+            <button
+              onClick={() => setViewMode("table")}
+              className="bg-white border border-slate-300 text-slate-800 text-xs px-3 py-1 rounded shadow-sm hover:bg-slate-50"
+            >
+              ← К таблице
+            </button>
+            <button
+              onClick={() => {
+                // при возврате пересобираем граф из таблицы (таблица — источник правды)
+                const wf = workflows.find((w) => w.id === activeWorkflowId);
+                if (wf) {
+                  const synced = stepsToGraph(wf);
+                  onWorkflowChange(synced);
+                }
+                setViewMode("table");
+              }}
+              className="bg-blue-600 text-white text-xs px-3 py-1 rounded shadow-sm hover:bg-blue-700"
+            >
+              💾 Сохранить схему
+            </button>
           </div>
-        )}
-      </div>
+
+          <VisualWorkflowEditor
+            workflow={currentWorkflow}
+            onWorkflowChange={onWorkflowChange}
+            formulas={formulas}
+            equipment={equipment}
+            workStations={workStations}
+          />
+        </div>
+      )}
     </div>
   );
 }
