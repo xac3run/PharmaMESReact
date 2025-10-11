@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Beaker, FileText, GitBranch, Settings, Users, 
   LogIn, LogOut, Package, Clipboard, Monitor, Wrench, AlertTriangle,
   Book, TrendingUp, GitMerge, Shield, Droplet, Menu, X, ChevronLeft,
-  FileCheck, Calculator, Lock, MessageSquare, Thermometer
+  FileCheck, Calculator, Lock, MessageSquare, Thermometer, Search
 } from "lucide-react";
 
 // Import components
@@ -36,6 +36,9 @@ import CAPASystem from "./components/CAPASystem";
 import GenealogyTracker from "./components/GenealogyTracker";
 import SOPManagement from "./components/SOPManagement";
 import EnvironmentalMonitoring from "./components/EnvironmentalMonitoring";
+// 🆕 добавлено:
+import ProductDisposition from "./components/ProductDisposition";
+import InvestigationWorkflow from "./components/InvestigationWorkflow";
 
 // Demo data
 import {
@@ -56,7 +59,9 @@ import {
   initialDeviations,
   initialComplaints,
   initialSOPs,
-  initialEnvRecords
+  initialEnvRecords,
+   initialDispositions,        // 🆕 добавлено
+  initialInvestigations       // 🆕 добавлено
 } from "./data/demoData";
 
 export default function App() {
@@ -89,6 +94,11 @@ export default function App() {
   const [expandedBatch, setExpandedBatch] = useState(null);
   const [editingFormula, setEditingFormula] = useState(null);
   const [selectedEquipmentClass, setSelectedEquipmentClass] = useState("Weighing");
+
+  // 🆕 добавлены состояния для новых вкладок
+  // 🆕 Новые состояния для Product Disposition и Investigation Workflow
+const [dispositions, setDispositions] = useState(initialDispositions);
+const [investigations, setInvestigations] = useState(initialInvestigations);
 
   // ----------- E-SIGNATURE MODAL -----------
   const [eSignatureModal, setESignatureModal] = useState({
@@ -163,7 +173,9 @@ export default function App() {
         genealogy: "Genealogy",
         equipmentLog: "Equipment Logbook",
         dataIntegrity: "Data Integrity",
-        equipmentConfig: "Equipment Config"
+        equipmentConfig: "Equipment Config",
+        productDisposition: "Product Disposition", // 🆕
+        investigationWorkflow: "Investigation Workflow" // 🆕
       },
       ru: {
         dashboard: "Панель",
@@ -194,7 +206,9 @@ export default function App() {
         genealogy: "Генеалогия",
         equipmentLog: "Журнал оборудования",
         dataIntegrity: "Целостность данных",
-        equipmentConfig: "Конфигурация оборудования"
+        equipmentConfig: "Конфигурация оборудования",
+        productDisposition: "Решение о продукте", // 🆕
+        investigationWorkflow: "Расследования" // 🆕
       }
     };
     return translations[language]?.[key] || translations["en"][key] || key;
@@ -591,11 +605,14 @@ export default function App() {
         { id: "formulas", label: t("formulas"), icon: FileText },
         { id: "workflows", label: t("workflows"), icon: GitBranch },
         { id: "materials", label: t("materials"), icon: Package },
+        // 🆕 добавлено:
+        { id: "productDisposition", label: t("productDisposition"), icon: FileCheck },
       ],
     },
     {
       title: t("quality"),
       items: [
+        { id: "investigationWorkflow", label: t("investigationWorkflow"), icon: Search }, // 🆕 новая вкладка
         { id: "batchRelease", label: t("batchRelease"), icon: FileCheck },
         { id: "yieldRecon", label: t("yieldRecon"), icon: Calculator },
         { id: "cleaning", label: t("cleaning"), icon: Droplet },
@@ -874,6 +891,40 @@ export default function App() {
                 showESignature={showESignature}
                 capas={capas}
                 setCapas={setCapas}
+                language={language}
+              />
+            )}
+            {/* 🆕 Новая вкладка Product Disposition */}
+            {activeTab === "productDisposition" && (
+              <ProductDisposition
+                batches={batches}
+                setBatches={setBatches}
+                materials={materials}
+                setMaterials={setMaterials}
+                deviations={deviations}
+                dispositions={dispositions}                // 🆕
+                setDispositions={setDispositions}          // 🆕
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {/* 🆕 Новая вкладка Investigation Workflow */}
+            {activeTab === "investigationWorkflow" && (
+              <InvestigationWorkflow
+                investigations={investigations}
+                setInvestigations={setInvestigations}
+                deviations={deviations}
+                setDeviations={setDeviations}
+                capas={capas}
+                setCapas={setCapas}
+                batches={batches}
+                materials={materials}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
                 language={language}
               />
             )}

@@ -382,21 +382,18 @@ export const initialBatches = [
     formulaId: 1,
     workflowId: 1,
     targetQuantity: 1000,
-    status: "ready",
-    priority: "normal",  // Добавить это поле!
-    progress: 0,
+    status: "completed",
+    priority: "normal",
+    progress: 100,
     currentStep: null,
-    currentStepIndex: 0,
+    currentStepIndex: 5,
     history: [],
     materialConsumption: [],
     createdDate: "2025-10-03",
     createdBy: "System",
-    createdAt: "2025-10-03T08:00:00Z",
-    startedAt: null,
-    completedAt: null,
-    startedBy: null
+    completedAt: "2025-10-05T10:00:00Z",
+    startedBy: "John Operator"
   },
-  // Можно добавить еще тестовые батчи:
   {
     id: "B-2025-002",
     formulaId: 1,
@@ -407,41 +404,11 @@ export const initialBatches = [
     progress: 60,
     currentStep: 3,
     currentStepIndex: 2,
-    history: [
-      {
-        stepId: 1,
-        stepName: "Dispense API",
-        value: "250.5",
-        lotNumber: "LOT-2025-001",
-        completedBy: "John Operator",
-        timestamp: "2025-10-03T09:00:00Z",
-        workStation: "Dispensing Station 1"
-      },
-      {
-        stepId: 2,
-        stepName: "Dispense Excipient",
-        value: "200.2",
-        lotNumber: "LOT-2025-002",
-        completedBy: "John Operator",
-        timestamp: "2025-10-03T09:15:00Z",
-        workStation: "Dispensing Station 1"
-      }
-    ],
-    materialConsumption: [
-      {
-        stepId: 1,
-        materialArticle: "MAT-001",
-        quantity: 125.25,
-        unit: "g",
-        lotNumber: "LOT-2025-001",
-        timestamp: "2025-10-03T09:00:00Z"
-      }
-    ],
+    history: [],
+    materialConsumption: [],
     createdDate: "2025-10-02",
     createdBy: "System",
-    createdAt: "2025-10-02T14:00:00Z",
     startedAt: "2025-10-03T08:30:00Z",
-    completedAt: null,
     startedBy: "John Operator"
   }
 ];
@@ -467,14 +434,91 @@ export const initialShifts = [
   }
 ];
 
-// New data for GMP features
 export const initialCleaningRecords = [];
 export const initialChangeControls = [];
 export const initialCAPAs = [];
 export const initialEquipmentLogs = [];
-// Add new data exports
 export const initialDeviations = [];
 export const initialComplaints = [];
-// Add to existing exports
 export const initialSOPs = [];
 export const initialEnvRecords = [];
+
+// 🆕 --- DEMO DATA FOR NEW MODULES ---
+// Product Disposition demo
+export const initialDispositions = [
+  {
+    id: "DISP-001",
+    type: "batch",
+    itemId: "B-2025-001",
+    product: "Tablet A",
+    decision: "release",
+    reason: "All QC tests passed successfully",
+    decidedBy: "Anna QA",
+    decidedAt: "2025-10-06T09:30:00Z",
+    signature: { user: "Anna QA", timestamp: "2025-10-06T09:30:00Z" }
+  },
+  {
+    id: "DISP-002",
+    type: "material",
+    itemId: "MAT-002",
+    product: "Excipient Beta",
+    decision: "quarantine",
+    reason: "Awaiting microbiological testing",
+    decidedBy: "Anna QA",
+    decidedAt: "2025-10-07T11:00:00Z",
+    signature: { user: "Anna QA", timestamp: "2025-10-07T11:00:00Z" }
+  }
+];
+
+// 🆕 Investigations demo
+export const initialInvestigations = [
+  {
+    id: "INV-2025-001",
+    title: "Deviation during weight check",
+    description: "Batch B-2025-001 showed out-of-spec weight at step 3.",
+    type: "deviation",
+    priority: "high",
+    initiator: "Anna QA",
+    initiatedDate: "2025-10-07T12:00:00Z",
+    status: "evidence_collected",
+    targetCloseDate: "2025-11-10",
+    relatedDeviations: ["DEV-001"],
+    relatedBatches: ["B-2025-001"],
+    workflow: [
+      { step: "Initiation", status: "completed", completedBy: "Anna QA", date: "2025-10-07T12:00:00Z", notes: "" },
+      { step: "Evidence Collection", status: "completed", completedBy: "Anna QA", date: "2025-10-07T14:00:00Z", notes: "QC logs and instrument calibration checked." },
+      { step: "Root Cause Analysis", status: "active", completedBy: null, date: null, notes: "" },
+      { step: "Impact Assessment", status: "pending", completedBy: null, date: null, notes: "" },
+      { step: "Recommendations", status: "pending", completedBy: null, date: null, notes: "" },
+      { step: "Review & Approval", status: "pending", completedBy: null, date: null, notes: "" },
+      { step: "CAPA Generation", status: "pending", completedBy: null, date: null, notes: "" },
+      { step: "Closure", status: "pending", completedBy: null, date: null, notes: "" }
+    ],
+    evidenceCollected: [
+      { id: 1, description: "QC Weight Log Screenshot", source: "MES system", collectedBy: "Anna QA", collectedDate: "2025-10-07T13:00:00Z", type: "document" },
+      { id: 2, description: "Balance calibration report", source: "QA Lab", collectedBy: "Anna QA", collectedDate: "2025-10-07T13:20:00Z", type: "file" }
+    ],
+    assignedTo: "QA Department",
+    investigationLead: "Anna QA"
+  },
+  {
+    id: "INV-2025-002",
+    title: "Material Beta – delayed release",
+    description: "Excipient Beta awaiting test results beyond standard quarantine period.",
+    type: "material",
+    priority: "medium",
+    initiator: "John Operator",
+    initiatedDate: "2025-10-08T10:00:00Z",
+    status: "initiated",
+    targetCloseDate: "2025-11-15",
+    relatedDeviations: [],
+    relatedBatches: [],
+    workflow: [
+      { step: "Initiation", status: "completed", completedBy: "John Operator", date: "2025-10-08T10:00:00Z", notes: "QA notified." },
+      { step: "Evidence Collection", status: "pending", completedBy: null, date: null, notes: "" }
+    ],
+    evidenceCollected: [],
+    assignedTo: "QA Department",
+    investigationLead: "Anna QA"
+  }
+];
