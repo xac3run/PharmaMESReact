@@ -847,6 +847,7 @@ export default function App() {
                 equipment={equipment}
                 setEquipment={setEquipment}
                 selectedEquipmentClass={selectedEquipmentClass}
+                equipmentClasses={equipmentClassesState}  // ← ВАЖНО! Должно быть equipmentClassesState
                 setSelectedEquipmentClass={setSelectedEquipmentClass}
                 addAuditEntry={addAuditEntry}
                 language={language}

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Plus, Edit3, Save, Trash2 } from 'lucide-react';
-import { equipmentClasses } from '../data/demoData';
+//import { equipmentClasses } from '../data/demoData';
 
 export default function Equipment({ 
   equipment,
   setEquipment,
   selectedEquipmentClass,
   setSelectedEquipmentClass,
+  equipmentClasses,  // ← ДОБАВЬ В PROPS
   addAuditEntry,
   language = 'en'
 }) {
@@ -20,6 +21,13 @@ export default function Equipment({
     location: '',
     status: 'operational'
   });
+
+  // ✅ Добавлена функция для безопасного получения подклассов
+  const getSubclassesForClass = (className) => {
+    if (!equipmentClasses || !equipmentClasses[className]) return [];
+    const classData = equipmentClasses[className];
+    return Array.isArray(classData) ? classData : (classData.subclasses || []);
+  };
   
   const t = (key) => {
     const translations = {
@@ -83,7 +91,7 @@ export default function Equipment({
       calibrationStatus: "valid",
       nextCalibrationDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0]
     };
-
+    
     setEquipment(prev => [...prev, equipmentInstance]);
     addAuditEntry("Equipment Created", `Equipment ${equipmentInstance.name} created`);
     
@@ -201,7 +209,8 @@ export default function Equipment({
       <div className="glass-card">
         <h3 className="font-semibold text-lg mb-3">{t('class')}: {selectedEquipmentClass}</h3>
         <div className="flex flex-wrap gap-2 mb-4">
-          {equipmentClasses[selectedEquipmentClass].map(subclass => (
+          {/* ✅ Исправлено: безопасный вызов подклассов */}
+          {getSubclassesForClass(selectedEquipmentClass).map(subclass => (
             <span key={subclass} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
               {subclass}
             </span>
