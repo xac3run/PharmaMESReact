@@ -13,7 +13,8 @@ import Batches from "./components/Batches";
 import Formulas from "./components/Formulas";
 //import Workflows from "./components/Workflows";
 
-import EnhancedWorkflows from "./components/EnhancedWorkflows";
+//import EnhancedWorkflows from "./components/EnhancedWorkflows";
+import EnhancedWorkflows from "./components/workflows/EnhancedWorkflows";
 import Materials from "./components/Materials";
 import Equipment from "./components/Equipment";
 import WorkStations from "./components/WorkStations";
@@ -45,7 +46,7 @@ import {
   initialBatches,
   initialFormulas,
   initialMaterials,
-  initialWorkflows,
+  //initialWorkflows, // УДАЛИТЬ ЭТУ СТРОКУ
   initialEquipment,
   initialWorkStations,
   initialPersonnel,
@@ -63,6 +64,9 @@ import {
    initialDispositions,        // 🆕 добавлено
   initialInvestigations       // 🆕 добавлено
 } from "./data/demoData";
+
+// ДОБАВИТЬ НОВЫЙ ИМПОРТ:
+import { initialWorkflows } from "./components/workflows/workflowDemoData";
 
 export default function App() {
   // ---------------- STATE ----------------
