@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Beaker, FileText, GitBranch, Settings, Users, 
   LogIn, LogOut, Package, Clipboard, Monitor, Wrench, AlertTriangle,
   Book, TrendingUp, GitMerge, Shield, Droplet, Menu, X, ChevronLeft,
-  FileCheck, Calculator, Lock, MessageSquare, Thermometer, Search, FlaskConical, GraduationCap 
+  FileCheck, Calculator, Lock, MessageSquare, Thermometer, Search, 
+  FlaskConical, GraduationCap, BarChart3 
 } from "lucide-react";
 
 // Import components
@@ -43,6 +44,8 @@ import InvestigationWorkflow from "./components/InvestigationWorkflow";
 
 import StabilityStudies from "./components/StabilityStudies";
 import TrainingMatrix from "./components/TrainingMatrix";
+import Validation from "./components/Validation";
+import AnnualProductReview from "./components/AnnualProductReview";
 
 // Demo data
 import {
@@ -68,6 +71,8 @@ import {
   initialInvestigations,       // 🆕 добавлено
   initialStabilityStudies,
   initialTrainingRecords,
+  initialValidations,    // ← ADD THIS
+  initialAPRs,
   updatedInitialBatches
 } from "./data/demoData";
 
@@ -113,6 +118,9 @@ const [investigations, setInvestigations] = useState(initialInvestigations);
 
 const [stabilityStudies, setStabilityStudies] = useState(initialStabilityStudies);
 const [trainingRecords, setTrainingRecords] = useState(initialTrainingRecords);
+
+const [validations, setValidations] = useState(initialValidations);
+const [aprs, setAprs] = useState(initialAPRs);
 
   // ----------- E-SIGNATURE MODAL -----------
   const [eSignatureModal, setESignatureModal] = useState({
@@ -639,8 +647,10 @@ const [trainingRecords, setTrainingRecords] = useState(initialTrainingRecords);
         { id: "dataIntegrity", label: t("dataIntegrity"), icon: Shield },
         { id: "deviations", label: "Deviations", icon: AlertTriangle },
         { id: "complaints", label: "Complaints", icon: MessageSquare },
-         { id: "stabilityStudies", label: "Stability Studies", icon: FlaskConical },
-       { id: "trainingMatrix", label: "Training Matrix", icon: GraduationCap },
+        { id: "stabilityStudies", label: "Stability Studies", icon: FlaskConical },
+        { id: "trainingMatrix", label: "Training Matrix", icon: GraduationCap },
+        { id: "validation", label: "Validation", icon: Shield },
+        { id: "annualReview", label: "Annual Review", icon: BarChart3 },
       ],
     },
     {
@@ -1006,6 +1016,40 @@ const [trainingRecords, setTrainingRecords] = useState(initialTrainingRecords);
             {activeTab === "audit" && (
               <AuditTrail auditTrail={auditTrail} batches={batches} />
             )}
+
+            {activeTab === "validation" && (
+              <Validation
+                validations={validations}
+                setValidations={setValidations}
+                equipment={equipment}
+                workflows={workflows}
+                formulas={formulas}
+                batches={batches}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {activeTab === "annualReview" && (
+              <AnnualProductReview
+                aprs={aprs}
+                setAprs={setAprs}
+                formulas={formulas}
+                batches={batches}
+                deviations={deviations}
+                complaints={complaints}
+                capas={capas}
+                changes={changes}
+                stabilityStudies={stabilityStudies}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
             {activeTab === "settings" && (
               <SettingsComponent
                 language={language}

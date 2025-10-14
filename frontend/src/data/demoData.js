@@ -442,6 +442,8 @@ export const initialDeviations = [];
 export const initialComplaints = [];
 export const initialSOPs = [];
 export const initialEnvRecords = [];
+export const initialValidations = [];
+export const initialAPRs = [];
 
 // 🆕 --- DEMO DATA FOR NEW MODULES ---
 // Product Disposition demo
