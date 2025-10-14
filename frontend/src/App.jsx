@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Beaker, FileText, GitBranch, Settings, Users, 
   LogIn, LogOut, Package, Clipboard, Monitor, Wrench, AlertTriangle,
   Book, TrendingUp, GitMerge, Shield, Droplet, Menu, X, ChevronLeft,
-  FileCheck, Calculator, Lock, MessageSquare, Thermometer, Search
+  FileCheck, Calculator, Lock, MessageSquare, Thermometer, Search, FlaskConical, GraduationCap 
 } from "lucide-react";
 
 // Import components
@@ -41,6 +41,9 @@ import EnvironmentalMonitoring from "./components/EnvironmentalMonitoring";
 import ProductDisposition from "./components/ProductDisposition";
 import InvestigationWorkflow from "./components/InvestigationWorkflow";
 
+import StabilityStudies from "./components/StabilityStudies";
+import TrainingMatrix from "./components/TrainingMatrix";
+
 // Demo data
 import {
   initialBatches,
@@ -62,7 +65,10 @@ import {
   initialSOPs,
   initialEnvRecords,
    initialDispositions,        // 🆕 добавлено
-  initialInvestigations       // 🆕 добавлено
+  initialInvestigations,       // 🆕 добавлено
+  initialStabilityStudies,
+  initialTrainingRecords,
+  updatedInitialBatches
 } from "./data/demoData";
 
 // ДОБАВИТЬ НОВЫЙ ИМПОРТ:
@@ -75,7 +81,8 @@ export default function App() {
   const [language, setLanguage] = useState("en");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const [batches, setBatches] = useState(initialBatches);
+ // const [batches, setBatches] = useState(initialBatches);
+  const [batches, setBatches] = useState(updatedInitialBatches);
   const [formulas, setFormulas] = useState(initialFormulas);
   const [materials, setMaterials] = useState(initialMaterials);
   const [workflows, setWorkflows] = useState(initialWorkflows);
@@ -103,6 +110,9 @@ export default function App() {
   // 🆕 Новые состояния для Product Disposition и Investigation Workflow
 const [dispositions, setDispositions] = useState(initialDispositions);
 const [investigations, setInvestigations] = useState(initialInvestigations);
+
+const [stabilityStudies, setStabilityStudies] = useState(initialStabilityStudies);
+const [trainingRecords, setTrainingRecords] = useState(initialTrainingRecords);
 
   // ----------- E-SIGNATURE MODAL -----------
   const [eSignatureModal, setESignatureModal] = useState({
@@ -543,6 +553,10 @@ const [investigations, setInvestigations] = useState(initialInvestigations);
     );
   };
 
+  const createStabilityStudy = (stabilityData) => {
+    setStabilityStudies(prev => [...prev, stabilityData]);
+    addAuditEntry("Stability Study Created", `Study for batch ${stabilityData.batchId}`);
+  };
   // -------- EXPORT BATCH PDF --------
   const exportBatchPDF = (batchId, reportType) => {
     if (!hasPermission("canExportReports")) {
@@ -625,6 +639,8 @@ const [investigations, setInvestigations] = useState(initialInvestigations);
         { id: "dataIntegrity", label: t("dataIntegrity"), icon: Shield },
         { id: "deviations", label: "Deviations", icon: AlertTriangle },
         { id: "complaints", label: "Complaints", icon: MessageSquare },
+         { id: "stabilityStudies", label: "Stability Studies", icon: FlaskConical },
+       { id: "trainingMatrix", label: "Training Matrix", icon: GraduationCap },
       ],
     },
     {
@@ -1000,15 +1016,19 @@ const [investigations, setInvestigations] = useState(initialInvestigations);
                 setRolePermissions={setRolePermissions}
               />
             )}
-            {activeTab === "batchRelease" && (
+           {activeTab === "batchRelease" && (
               <BatchRelease
                 batch={batches.find((b) => b.status === "completed")}
                 workflows={workflows}
+                formulas={formulas} // НОВЫЙ
+                equipment={equipment} // НОВЫЙ
+                workStations={workStations} // НОВЫЙ
                 deviations={deviations}
                 currentUser={currentUser}
                 releaseBatch={releaseBatch}
                 showESignature={showESignature}
                 addAuditEntry={addAuditEntry}
+                createStabilityStudy={createStabilityStudy} // НОВЫЙ
               />
             )}
             {activeTab === "yieldRecon" && (
@@ -1046,6 +1066,10 @@ const [investigations, setInvestigations] = useState(initialInvestigations);
                 currentUser={currentUser}
                 addAuditEntry={addAuditEntry}
                 showESignature={showESignature}
+                createValidationProtocol={(data) => { // НОВЫЙ
+                  console.log("Validation protocol created:", data);
+                  addAuditEntry("Validation Protocol Created", data.id);
+                }}
                 language={language}
               />
             )}
@@ -1067,6 +1091,32 @@ const [investigations, setInvestigations] = useState(initialInvestigations);
                 language={language}
               />
             )}
+            {activeTab === "stabilityStudies" && (
+              <StabilityStudies
+                stabilityStudies={stabilityStudies}
+                setStabilityStudies={setStabilityStudies}
+                batches={batches}
+                formulas={formulas}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
+            {activeTab === "trainingMatrix" && (
+              <TrainingMatrix
+                personnel={personnel}
+                setPersonnel={setPersonnel}
+                trainingRecords={trainingRecords}
+                setTrainingRecords={setTrainingRecords}
+                currentUser={currentUser}
+                addAuditEntry={addAuditEntry}
+                showESignature={showESignature}
+                language={language}
+              />
+            )}
+
             {activeTab === "equipmentLog" && (
               <EquipmentLogbook
                 equipment={equipment}

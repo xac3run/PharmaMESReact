@@ -522,3 +522,308 @@ export const initialInvestigations = [
     investigationLead: "Anna QA"
   }
 ];
+// Add to existing demoData.js - NEW EXPORTS
+
+// Stability Studies
+export const initialStabilityStudies = [
+  {
+    id: 'STAB-001',
+    batchId: 'B-2025-001',
+    product: 'Tablet A',
+    startDate: '2025-10-01',
+    duration: 24,
+    status: 'active',
+    conditions: [
+      {
+        id: 1,
+        name: '25°C/60%RH',
+        type: 'long_term',
+        temperature: 25,
+        humidity: 60,
+        description: 'Long-term storage condition'
+      },
+      {
+        id: 2,
+        name: '40°C/75%RH',
+        type: 'accelerated',
+        temperature: 40,
+        humidity: 75,
+        description: 'Accelerated storage condition'
+      }
+    ],
+    pullSchedule: [0, 3, 6, 12, 18, 24],
+    samples: [
+      {
+        id: 'STAB-001-1-M0',
+        conditionId: 1,
+        conditionName: '25°C/60%RH',
+        timepoint: 0,
+        scheduledPullDate: '2025-10-01T00:00:00Z',
+        status: 'tested',
+        pulledDate: '2025-10-01T00:00:00Z',
+        pulledBy: 'Anna QA',
+        storageLocation: 'Stability Chamber 1',
+        tests: [
+          { name: 'Appearance', result: 'White', status: 'pass', spec: 'White to off-white' },
+          { name: 'Assay (%)', result: 100.2, status: 'pass', spec: '95.0-105.0', min: 95.0, max: 105.0 },
+          { name: 'Impurities (%)', result: 0.8, status: 'pass', spec: 'NMT 2.0', max: 2.0 },
+          { name: 'Dissolution (%)', result: 95.0, status: 'pass', spec: 'NLT 80% in 30 min', min: 80.0 }
+        ]
+      },
+      {
+        id: 'STAB-001-1-M3',
+        conditionId: 1,
+        conditionName: '25°C/60%RH',
+        timepoint: 3,
+        scheduledPullDate: '2026-01-01T00:00:00Z',
+        status: 'scheduled',
+        pulledDate: null,
+        pulledBy: null,
+        storageLocation: 'Stability Chamber 1',
+        tests: [
+          { name: 'Appearance', result: null, status: 'pending', spec: 'White to off-white' },
+          { name: 'Assay (%)', result: null, status: 'pending', spec: '95.0-105.0', min: 95.0, max: 105.0 },
+          { name: 'Impurities (%)', result: null, status: 'pending', spec: 'NMT 2.0', max: 2.0 },
+          { name: 'Dissolution (%)', result: null, status: 'pending', spec: 'NLT 80% in 30 min', min: 80.0 }
+        ]
+      }
+    ],
+    initiatedBy: 'Anna QA',
+    initiatedDate: '2025-10-01T00:00:00Z'
+  }
+];
+
+// Training Records
+export const initialTrainingRecords = [
+  {
+    id: 1,
+    personnelId: 1,
+    topicId: 'GMP_BASIC',
+    topicName: 'GMP Basic Training',
+    completedDate: '2025-01-15',
+    score: 95,
+    trainer: 'Training Department',
+    status: 'passed',
+    recordedBy: 'System Admin',
+    recordedDate: '2025-01-15T00:00:00Z'
+  },
+  {
+    id: 2,
+    personnelId: 1,
+    topicId: 'WEIGHING',
+    topicName: 'Weighing Operations',
+    completedDate: '2025-02-10',
+    score: 88,
+    trainer: 'Master Trainer',
+    status: 'passed',
+    recordedBy: 'System Admin',
+    recordedDate: '2025-02-10T00:00:00Z'
+  },
+  {
+    id: 3,
+    personnelId: 2,
+    topicId: 'GMP_ADV',
+    topicName: 'GMP Advanced',
+    completedDate: '2024-11-20',
+    score: 92,
+    trainer: 'QA Manager',
+    status: 'passed',
+    recordedBy: 'System Admin',
+    recordedDate: '2024-11-20T00:00:00Z'
+  },
+  {
+    id: 4,
+    personnelId: 2,
+    topicId: 'QC_METHODS',
+    topicName: 'QC Testing Methods',
+    completedDate: '2025-01-05',
+    score: 98,
+    trainer: 'QC Lab Manager',
+    status: 'passed',
+    recordedBy: 'System Admin',
+    recordedDate: '2025-01-05T00:00:00Z'
+  }
+];
+
+// UPDATE existing initialBatches to include new fields
+export const updatedInitialBatches = [
+  {
+    id: "B-2025-001",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 1000,
+    actualYield: 980,
+    status: "completed",
+    priority: "normal",
+    progress: 100,
+    currentStep: null,
+    currentStepIndex: 5,
+    history: [
+      {
+        stepId: 1,
+        stepName: "Dispense API",
+        value: "250.1g",
+        lotNumber: "LOT-2025-001",
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T09:00:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        equipmentParameters: { precision: 0.01, temperature: 21.5 }
+      },
+      {
+        stepId: 2,
+        stepName: "Dispense Excipient",
+        value: "200.0g",
+        lotNumber: "LOT-2025-002",
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T09:15:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        equipmentParameters: { precision: 0.01, temperature: 21.5 }
+      },
+      {
+        stepId: 3,
+        stepName: "QC - Weight Check",
+        value: "450.1g",
+        lotNumber: null,
+        completedBy: "Anna QA",
+        timestamp: "2025-10-03T09:30:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        equipmentParameters: { precision: 0.01, temperature: 21.5 }
+      },
+      {
+        stepId: 4,
+        stepName: "Mixing",
+        value: "CONFIRMED",
+        lotNumber: null,
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T10:00:00Z",
+        workStation: "Mixing Station 1",
+        equipmentUsed: "Mixer-01",
+        equipmentParameters: { rpm: 60, temperature: 20, duration: 30 }
+      },
+      {
+        stepId: 5,
+        stepName: "QC - Homogeneity Test",
+        value: "98.5%",
+        lotNumber: null,
+        completedBy: "Anna QA",
+        timestamp: "2025-10-03T10:45:00Z",
+        workStation: "Mixing Station 1",
+        equipmentUsed: null,
+        equipmentParameters: null
+      }
+    ],
+    materialConsumption: [
+      {
+        stepId: 1,
+        materialArticle: "MAT-001",
+        quantity: 250.1,
+        unit: "g",
+        lotNumber: "LOT-2025-001",
+        timestamp: "2025-10-03T09:00:00Z"
+      },
+      {
+        stepId: 2,
+        materialArticle: "MAT-002",
+        quantity: 200.0,
+        unit: "g",
+        lotNumber: "LOT-2025-002",
+        timestamp: "2025-10-03T09:15:00Z"
+      }
+    ],
+    qcResults: [
+      { test: "Weight Check", result: 450.1, unit: "g", min: 445, max: 455, pass: true },
+      { test: "Homogeneity", result: 98.5, unit: "%", min: 95, max: 100, pass: true }
+    ],
+    createdDate: "2025-10-03",
+    createdBy: "System",
+    startedAt: "2025-10-03T08:30:00Z",
+    completedAt: "2025-10-05T10:00:00Z",
+    startedBy: "John Operator",
+    yieldReconciliation: {
+      actualYield: 980,
+      yieldPercentage: 98.0,
+      deviation: 2.0,
+      materialBalance: {
+        totalInput: 450.1,
+        expectedOutput: 1000,
+        actualOutput: 980,
+        loss: 20,
+        lossPercentage: 2.0
+      },
+      status: 'reconciled',
+      reconciledBy: 'Anna QA',
+      reconciledAt: '2025-10-05T11:00:00Z'
+    },
+    cleaningVerified: true,
+    releaseInfo: {
+      releasedBy: 'Anna QA',
+      releasedAt: '2025-10-06T09:30:00Z',
+      certificateOfAnalysis: {
+        batchNumber: 'B-2025-001',
+        product: 'Tablet A',
+        articleNumber: 'ART-001',
+        formulaVersion: '1.0',
+        manufacturingDate: '2025-10-03T08:30:00Z',
+        expiryDate: '2027-10-03',
+        quantity: 980,
+        unit: 'units',
+        qcResults: [
+          { test: "Weight Check", result: 450.1, unit: "g", min: 445, max: 455, pass: true },
+          { test: "Homogeneity", result: 98.5, unit: "%", min: 95, max: 100, pass: true }
+        ],
+        releaseDate: '2025-10-06T09:30:00Z',
+        releasedBy: 'Anna QA'
+      }
+    }
+  },
+  {
+    id: "B-2025-002",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 500,
+    status: "in_progress",
+    priority: "high",
+    progress: 60,
+    currentStep: 3,
+    currentStepIndex: 2,
+    history: [
+      {
+        stepId: 1,
+        stepName: "Dispense API",
+        value: "125.0g",
+        lotNumber: "LOT-2025-001",
+        completedBy: "John Operator",
+        timestamp: "2025-10-08T09:00:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01"
+      },
+      {
+        stepId: 2,
+        stepName: "Dispense Excipient",
+        value: "100.0g",
+        lotNumber: "LOT-2025-002",
+        completedBy: "John Operator",
+        timestamp: "2025-10-08T09:15:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01"
+      }
+    ],
+    materialConsumption: [],
+    qcResults: [],
+    createdDate: "2025-10-08",
+    createdBy: "System",
+    startedAt: "2025-10-08T08:30:00Z",
+    startedBy: "John Operator"
+  }
+];
+
+// Function to help App.js integrate new data
+export function initializeStabilityAndTraining() {
+  return {
+    stabilityStudies: initialStabilityStudies,
+    trainingRecords: initialTrainingRecords
+  };
+}
