@@ -11,6 +11,7 @@ import {
 // Import components
 import Dashboard from "./components/Dashboard";
 import Batches from "./components/Batches";
+//import Batches from "./components/batch/Batches";
 import Formulas from "./components/Formulas";
 //import Workflows from "./components/Workflows";
 
@@ -855,6 +856,9 @@ const [aprs, setAprs] = useState(initialAPRs);
                 executeStep={executeStep}
                 exportBatchPDF={exportBatchPDF}
                 addAuditEntry={addAuditEntry}
+                showESignature={showESignature}  // Добавить эту строку
+                deviations={deviations}        // Добавить
+                setDeviations={setDeviations}  // Добавить
               />
             )}
             {activeTab === "formulas" && (
