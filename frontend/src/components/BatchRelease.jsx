@@ -1,87 +1,271 @@
 import React, { useState } from 'react';
-import { FileCheck, AlertCircle, CheckCircle, XCircle, Download, Calendar, ClipboardCheck } from 'lucide-react';
+import { FileCheck, AlertCircle, CheckCircle, XCircle, Download, Clock, Package, RotateCcw, AlertTriangle, Lock, PlayCircle } from 'lucide-react';
 
 export default function BatchRelease({ 
-  batch,
+  batches,
+  setBatches,
   workflows,
-  deviations = [], // добавить default
-  formulas = [], // добавить default
-  equipment = [], // добавить default
-  workStations = [], // добавить default
+  deviations = [],
+  formulas = [],
+  equipment = [],
+  workStations = [],
   currentUser,
   releaseBatch,
   showESignature,
   addAuditEntry,
-  createStabilityStudy
+  createStabilityStudy,
+  setDeviations
 }) {
-  const [showHistory, setShowHistory] = useState(false);
-  const [showCoA, setShowCoA] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [expandedBatch, setExpandedBatch] = useState(null);
+  const [showReworkModal, setShowReworkModal] = useState(false);
+  const [reworkBatchId, setReworkBatchId] = useState(null);
 
-  if (!batch || batch.status !== 'completed') {
-    return (
-      <div className="glass-card text-center py-8">
-        <p className="text-gray-600">Batch release only available for completed batches</p>
-      </div>
+  // Get batches for disposition (completed, under_review, quarantine, investigating)
+  const getBatchesForDisposition = () => {
+    return batches.filter(b => 
+      ['completed', 'under_review', 'quarantine', 'investigating'].includes(b.status)
     );
-  }
-
-  const workflow = workflows?.find(w => w.id === batch.workflowId);
-  const formula = formulas?.find(f => f.id === batch.formulaId);
-  const batchDeviations = deviations?.filter(d => d.batchId === batch.id) || [];
-  
-  // Auto-check conditions
-  const checks = {
-    allStepsCompleted: {
-      status: batch.history.length === workflow?.steps.length,
-      label: 'All Manufacturing Steps Completed',
-      details: `${batch.history.length}/${workflow?.steps.length} steps completed`
-    },
-    qcTestsPassed: {
-      status: batch.qcResults?.every(r => r.pass) || false,
-      label: 'All QC Tests Passed',
-      details: batch.qcResults ? `${batch.qcResults.filter(r => r.pass).length}/${batch.qcResults.length} tests passed` : 'No QC results'
-    },
-    deviationsClosed: {
-      status: batchDeviations.every(d => d.status === 'approved' || d.status === 'rejected'),
-      label: 'All Deviations Closed',
-      details: `${batchDeviations.length} deviations - ${batchDeviations.filter(d => d.status === 'approved').length} approved, ${batchDeviations.filter(d => d.status === 'rejected').length} rejected`
-    },
-    yieldReconciled: {
-      status: batch.yieldReconciliation?.status === 'reconciled',
-      label: 'Yield Reconciled',
-      details: batch.yieldReconciliation ? `${batch.yieldReconciliation.yieldPercentage.toFixed(2)}%` : 'Not reconciled'
-    },
-    documentationComplete: {
-      status: batch.history.every(h => h.completedBy),
-      label: 'All Steps Signed',
-      details: 'All steps have electronic signatures'
-    },
-    cleaningVerified: {
-      status: batch.cleaningVerified || false,
-      label: 'Equipment Cleaning Verified',
-      details: batch.cleaningVerified ? 'Verified' : 'Not verified'
-    }
   };
 
-  const allChecksPassed = Object.values(checks).every(c => c.status);
-  const canRelease = allChecksPassed && (currentUser.role === 'QA' || currentUser.role === 'Admin');
+  const dispositionBatches = getBatchesForDisposition();
+  const filteredBatches = dispositionBatches.filter(batch => {
+    if (filterStatus === 'all') return true;
+    if (filterStatus === 'awaiting') return !batch.disposition;
+    if (filterStatus === 'released') return batch.disposition?.decision === 'release';
+    if (filterStatus === 'rejected') return batch.disposition?.decision === 'reject';
+    if (filterStatus === 'quarantine') return batch.status === 'quarantine' || batch.disposition?.decision === 'quarantine';
+    if (filterStatus === 'investigating') return batch.status === 'investigating' || batch.disposition?.decision === 'investigate';
+    return true;
+  });
 
-  const generateCoA = () => {
-    return {
-      batchNumber: batch.id,
-      product: formula?.productName,
-      articleNumber: formula?.articleNumber,
-      formulaVersion: formula?.version,
-      manufacturingDate: batch.startedAt,
-      expiryDate: calculateExpiryDate(batch.startedAt, 24), // 24 months shelf life
-      quantity: batch.actualYield || batch.targetQuantity,
-      unit: 'units',
-      qcResults: batch.qcResults || [],
-      releaseDate: new Date().toISOString(),
-      releasedBy: currentUser.name,
-      inProcessControls: batch.history.filter(h => h.stepName.includes('QC')),
-      specifications: formula?.bom || []
+  // Statistics
+  const stats = {
+    total: dispositionBatches.length,
+    awaiting: dispositionBatches.filter(b => !b.disposition).length,
+    released: dispositionBatches.filter(b => b.disposition?.decision === 'release').length,
+    rejected: dispositionBatches.filter(b => b.disposition?.decision === 'reject').length,
+    quarantine: dispositionBatches.filter(b => b.status === 'quarantine' || b.disposition?.decision === 'quarantine').length,
+    withDeviations: dispositionBatches.filter(b => b.hasDeviations).length
+  };
+
+  // Auto-check conditions for release
+  const getReleasabilityChecks = (batch) => {
+    const workflow = workflows?.find(w => w.id === batch.workflowId);
+    const batchDeviations = deviations?.filter(d => d.relatedBatch === batch.id) || [];
+    
+    const checks = {
+      allStepsCompleted: {
+        status: batch.history?.length === workflow?.steps?.length,
+        label: 'All Manufacturing Steps Completed',
+        details: `${batch.history?.length || 0}/${workflow?.steps?.length || 0} steps completed`
+      },
+      qcTestsPassed: {
+        status: batch.qcResults?.every(r => r.pass) || false,
+        label: 'All QC Tests Passed',
+        details: batch.qcResults ? `${batch.qcResults.filter(r => r.pass).length}/${batch.qcResults.length} tests passed` : 'No QC results'
+      },
+      noDeviations: {
+        status: !batch.hasDeviations,
+        label: 'No Open Deviations',
+        details: batch.hasDeviations ? `${batchDeviations.length} deviations detected` : 'No deviations'
+      },
+      deviationsClosed: {
+        status: batchDeviations.every(d => d.status === 'closed'),
+        label: 'All Deviations Closed',
+        details: `${batchDeviations.filter(d => d.status === 'closed').length}/${batchDeviations.length} closed`
+      },
+      yieldReconciled: {
+        status: batch.yieldReconciliation?.status === 'reconciled',
+        label: 'Yield Reconciled',
+        details: batch.yieldReconciliation ? `${batch.yieldReconciliation.yieldPercentage?.toFixed(2)}%` : 'Not reconciled'
+      },
+      documentationComplete: {
+        status: batch.history?.every(h => h.completedBy),
+        label: 'All Steps Signed',
+        details: 'All steps have electronic signatures'
+      },
+      cleaningVerified: {
+        status: batch.cleaningVerified || false,
+        label: 'Equipment Cleaning Verified',
+        details: batch.cleaningVerified ? 'Verified' : 'Not verified'
+      }
     };
+
+    return checks;
+  };
+
+  // Make disposition decision
+  const makeDisposition = (batchId, decision, reason) => {
+    const batch = batches.find(b => b.id === batchId);
+    const checks = getReleasabilityChecks(batch);
+    
+    // Validate decision based on batch state
+    if (decision === 'release') {
+      const allChecksPassed = Object.values(checks).every(c => c.status);
+      if (!allChecksPassed) {
+        alert('Cannot release: Not all requirements met. Consider Quarantine or Investigation first.');
+        return;
+      }
+    }
+
+    showESignature(
+      'Batch Disposition Decision',
+      `${decision.toUpperCase()} - Batch ${batchId}`,
+      (signature) => {
+        const disposition = {
+          decision,
+          reason,
+          decidedBy: signature.user,
+          decidedAt: signature.timestamp,
+          signature
+        };
+
+        let newStatus = batch.status;
+        if (decision === 'release') {
+          newStatus = 'released';
+          
+          // Generate CoA
+          const formula = formulas.find(f => f.id === batch.formulaId);
+          const coaData = {
+            batchNumber: batch.id,
+            product: formula?.productName,
+            articleNumber: formula?.articleNumber,
+            formulaVersion: formula?.version,
+            manufacturingDate: batch.startedAt,
+            expiryDate: calculateExpiryDate(batch.startedAt, 24),
+            quantity: batch.actualYield || batch.targetQuantity,
+            unit: 'units',
+            qcResults: batch.qcResults || [],
+            releaseDate: signature.timestamp,
+            releasedBy: signature.user
+          };
+
+          // Update batch with release info
+          setBatches(prev => prev.map(b => 
+            b.id === batchId ? {
+              ...b,
+              disposition,
+              status: newStatus,
+              releaseInfo: {
+                releasedBy: signature.user,
+                releasedAt: signature.timestamp,
+                signature,
+                certificateOfAnalysis: coaData
+              }
+            } : b
+          ));
+
+          // Create stability study
+          if (createStabilityStudy) {
+            const stabilityData = {
+              batchId: batch.id,
+              product: formula?.productName,
+              startDate: new Date().toISOString(),
+              conditions: [
+                { id: 1, name: '25°C/60%RH', type: 'long_term', temperature: 25, humidity: 60 },
+                { id: 2, name: '40°C/75%RH', type: 'accelerated', temperature: 40, humidity: 75 }
+              ],
+              duration: 24,
+              pullSchedule: [0, 3, 6, 12, 18, 24],
+              status: 'active',
+              initiatedBy: signature.user,
+              initiatedDate: signature.timestamp
+            };
+            createStabilityStudy(stabilityData);
+          }
+        } else if (decision === 'reject') {
+          newStatus = 'rejected';
+          setBatches(prev => prev.map(b => 
+            b.id === batchId ? { ...b, disposition, status: newStatus } : b
+          ));
+        } else if (decision === 'quarantine') {
+          newStatus = 'quarantine';
+          setBatches(prev => prev.map(b => 
+            b.id === batchId ? { ...b, disposition, status: newStatus } : b
+          ));
+        } else if (decision === 'investigate') {
+          newStatus = 'investigating';
+          setBatches(prev => prev.map(b => 
+            b.id === batchId ? { ...b, disposition, status: newStatus } : b
+          ));
+        }
+
+        addAuditEntry(
+          "Batch Disposition",
+          `Batch ${batchId} - ${decision.toUpperCase()}: ${reason}`,
+          batchId
+        );
+      }
+    );
+  };
+
+  // Handle disposition action
+  const handleDispositionAction = (batch, decision) => {
+    const reasons = {
+      release: 'All quality criteria met, batch approved for distribution',
+      reject: 'Does not meet quality specifications, batch rejected',
+      quarantine: 'Additional testing or investigation required',
+      investigate: 'Investigation required due to deviations or QC failures'
+    };
+
+    const reason = prompt(`Enter reason for ${decision}:`, reasons[decision]);
+    if (!reason) return;
+
+    makeDisposition(batch.id, decision, reason);
+  };
+
+  // Rework batch - return to specific step
+  const handleRework = (batchId, stepIndex, reason) => {
+    showESignature(
+      'Batch Rework Authorization',
+      `Rework batch ${batchId} from step ${stepIndex + 1}`,
+      (signature) => {
+        const batch = batches.find(b => b.id === batchId);
+        const workflow = workflows.find(w => w.id === batch.workflowId);
+        const steps = workflow?.steps || [];
+
+        if (stepIndex < 0 || stepIndex >= steps.length) {
+          alert('Invalid step index');
+          return;
+        }
+
+        // Remove history after the step
+        const newHistory = batch.history.slice(0, stepIndex);
+        const newMaterialConsumption = batch.materialConsumption.filter(mc => 
+          newHistory.some(h => h.stepId === mc.stepId)
+        );
+
+        setBatches(prev => prev.map(b => 
+          b.id === batchId ? {
+            ...b,
+            status: 'in_progress',
+            history: newHistory,
+            materialConsumption: newMaterialConsumption,
+            currentStep: steps[stepIndex].id,
+            currentStepIndex: stepIndex,
+            progress: Math.round((stepIndex / steps.length) * 100),
+            reworkInfo: {
+              reworkedAt: signature.timestamp,
+              reworkedBy: signature.user,
+              reason,
+              fromStep: stepIndex + 1,
+              signature
+            },
+            disposition: null // Clear previous disposition
+          } : b
+        ));
+
+        addAuditEntry(
+          "Batch Rework",
+          `Batch ${batchId} returned to step ${stepIndex + 1} for rework. Reason: ${reason}`,
+          batchId
+        );
+
+        setShowReworkModal(false);
+        setReworkBatchId(null);
+      }
+    );
   };
 
   const calculateExpiryDate = (manufacturingDate, monthsShelfLife) => {
@@ -90,48 +274,13 @@ export default function BatchRelease({
     return date.toISOString().split('T')[0];
   };
 
-  const performRelease = () => {
-    if (!canRelease) {
-      alert('Cannot release: not all requirements met or insufficient permissions');
+  const exportCoAPDF = (batch) => {
+    const coaData = batch.releaseInfo?.certificateOfAnalysis;
+    if (!coaData) {
+      alert('No Certificate of Analysis available');
       return;
     }
 
-    showESignature(
-      'Batch Release',
-      `Release batch ${batch.id} for distribution`,
-      (signature) => {
-        const coaData = generateCoA();
-        
-        releaseBatch(batch.id, {
-          releasedBy: signature.signedBy,
-          releasedAt: signature.timestamp,
-          signature: signature,
-          releaseChecklist: checks,
-          certificateOfAnalysis: coaData
-        });
-
-        addAuditEntry("Batch Released", `Batch ${batch.id} released by ${signature.signedBy}`, batch.id);
-
-        // Auto-create Stability Study
-        if (createStabilityStudy) {
-          const stabilityData = {
-            batchId: batch.id,
-            product: formula?.productName,
-            startDate: new Date().toISOString(),
-            conditions: ['25°C/60%RH', '40°C/75%RH'],
-            duration: 24, // months
-            pullSchedule: [0, 3, 6, 12, 18, 24], // months
-            status: 'active'
-          };
-          createStabilityStudy(stabilityData);
-          addAuditEntry("Stability Study Created", `Stability study initiated for batch ${batch.id}`, batch.id);
-        }
-      }
-    );
-  };
-
-  const exportCoAPDF = () => {
-    const coaData = batch.releaseInfo?.certificateOfAnalysis || generateCoA();
     let content = `CERTIFICATE OF ANALYSIS\n\n`;
     content += `Batch Number: ${coaData.batchNumber}\n`;
     content += `Product: ${coaData.product}\n`;
@@ -143,10 +292,6 @@ export default function BatchRelease({
     content += `\n--- QC TEST RESULTS ---\n`;
     coaData.qcResults.forEach(qc => {
       content += `${qc.test}: ${qc.result} ${qc.unit} (Spec: ${qc.min}-${qc.max}) - ${qc.pass ? 'PASS' : 'FAIL'}\n`;
-    });
-    content += `\n--- IN-PROCESS CONTROLS ---\n`;
-    coaData.inProcessControls?.forEach(ipc => {
-      content += `${ipc.stepName}: ${ipc.value} - ${new Date(ipc.timestamp).toLocaleString()}\n`;
     });
     content += `\nReleased By: ${coaData.releasedBy}\n`;
     content += `Release Date: ${new Date(coaData.releaseDate).toLocaleString()}\n`;
@@ -160,57 +305,103 @@ export default function BatchRelease({
     addAuditEntry("CoA Exported", `Certificate of Analysis exported for batch ${batch.id}`, batch.id);
   };
 
-  const exportBatchHistory = () => {
-    let content = `BATCH EXECUTION HISTORY - ${batch.id}\n\n`;
-    content += `Product: ${formula?.productName}\n`;
-    content += `Formula: ${formula?.articleNumber} v${formula?.version}\n`;
-    content += `Target Quantity: ${batch.targetQuantity} units\n`;
-    content += `Actual Yield: ${batch.actualYield || 'N/A'} units\n`;
-    content += `Started: ${new Date(batch.startedAt).toLocaleString()}\n`;
-    content += `Completed: ${new Date(batch.completedAt).toLocaleString()}\n\n`;
+  const ReworkModal = ({ batch }) => {
+    const [selectedStep, setSelectedStep] = useState(0);
+    const [reworkReason, setReworkReason] = useState('');
     
-    content += `--- EXECUTION STEPS ---\n`;
-    batch.history.forEach((step, idx) => {
-      const stepData = workflow?.steps.find(s => s.id === step.stepId);
-      const equipmentUsed = equipment?.find(e => e.id === stepData?.equipmentId);
-      const wsUsed = workStations?.find(ws => ws.id === stepData?.workStationId);
-      
-      content += `\nStep ${idx + 1}: ${step.stepName}\n`;
-      content += `  Type: ${stepData?.type || 'N/A'}\n`;
-      content += `  Value: ${step.value}\n`;
-      if (step.lotNumber) content += `  Lot Number: ${step.lotNumber}\n`;
-      if (equipmentUsed) {
-        content += `  Equipment: ${equipmentUsed.name} (${equipmentUsed.class}/${equipmentUsed.subclass})\n`;
-        content += `  Serial Number: ${equipmentUsed.serialNumber}\n`;
-        if (step.equipmentParameters) {
-          content += `  Parameters: ${JSON.stringify(step.equipmentParameters)}\n`;
-        }
-      }
-      if (wsUsed) content += `  Work Station: ${wsUsed.name}\n`;
-      content += `  Completed By: ${step.completedBy}\n`;
-      content += `  Timestamp: ${new Date(step.timestamp).toLocaleString()}\n`;
-      if (stepData?.instruction) content += `  Instruction: ${stepData.instruction}\n`;
-    });
+    const workflow = workflows.find(w => w.id === batch.workflowId);
+    const steps = workflow?.steps || [];
 
-    content += `\n--- MATERIAL CONSUMPTION ---\n`;
-    batch.materialConsumption.forEach(mc => {
-      content += `${mc.materialArticle}: ${mc.quantity} ${mc.unit} (Lot: ${mc.lotNumber})\n`;
-    });
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="glass-card max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold flex items-center">
+              <RotateCcw className="w-5 h-5 mr-2" />
+              Rework Batch {batch.id}
+            </h3>
+            <button onClick={() => setShowReworkModal(false)} className="text-gray-500 hover:text-gray-700">
+              <XCircle className="w-6 h-6" />
+            </button>
+          </div>
 
-    if (batchDeviations.length > 0) {
-      content += `\n--- DEVIATIONS ---\n`;
-      batchDeviations.forEach(dev => {
-        content += `${dev.id}: ${dev.title} - Status: ${dev.status}\n`;
-      });
-    }
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold mb-2">Select Step to Return To:</label>
+              <div className="space-y-2 max-h-60 overflow-y-auto border rounded p-3">
+                {steps.map((step, idx) => {
+                  const completed = batch.history?.find(h => h.stepId === step.id);
+                  return (
+                    <div 
+                      key={step.id}
+                      className={`p-3 rounded border-2 cursor-pointer ${
+                        selectedStep === idx 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 hover:border-blue-300'
+                      }`}
+                      onClick={() => setSelectedStep(idx)}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono text-xs bg-gray-200 px-2 py-1 rounded">Step {idx + 1}</span>
+                        <span className="font-semibold">{step.name}</span>
+                        {completed && <CheckCircle className="w-4 h-4 text-green-600" />}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1">{step.type}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Batch_History_${batch.id}.txt`;
-    a.click();
-    addAuditEntry("Batch History Exported", `Full history exported for batch ${batch.id}`, batch.id);
+            <div>
+              <label className="block text-sm font-semibold mb-2">Rework Reason (Required):</label>
+              <textarea
+                className="w-full border rounded px-3 py-2"
+                rows="4"
+                value={reworkReason}
+                onChange={(e) => setReworkReason(e.target.value)}
+                placeholder="Enter detailed reason for rework..."
+              />
+            </div>
+
+            <div className="p-3 bg-yellow-50 border border-yellow-300 rounded">
+              <div className="flex items-start space-x-2">
+                <AlertCircle className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold text-yellow-900">Rework Warning</p>
+                  <p className="text-yellow-800">
+                    This will delete all execution history from step {selectedStep + 1} onwards. 
+                    Material consumption will be recalculated. This action requires electronic signature.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  if (!reworkReason.trim()) {
+                    alert('Please enter rework reason');
+                    return;
+                  }
+                  handleRework(batch.id, selectedStep, reworkReason);
+                }}
+                className="btn-primary flex-1 flex items-center justify-center space-x-2"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Authorize Rework & E-Sign</span>
+              </button>
+              <button
+                onClick={() => setShowReworkModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -218,255 +409,417 @@ export default function BatchRelease({
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold flex items-center">
           <FileCheck className="w-6 h-6 mr-2" />
-          Electronic Batch Release - {batch.id}
+          Batch Release & Disposition
         </h2>
-        {batch.releaseInfo && (
-          <span className="px-4 py-2 bg-green-100 text-green-800 rounded-lg font-semibold flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2" />
-            RELEASED
-          </span>
-        )}
       </div>
 
-      <div className="glass-card">
-        <h3 className="text-lg font-semibold mb-4">Release Checklist</h3>
-        
-        <div className="space-y-3">
-          {Object.entries(checks).map(([key, check]) => (
-            <div key={key} className={`p-4 rounded-lg border ${
-              check.status ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'
-            }`}>
-              <div className="flex items-start space-x-3">
-                {check.status ? (
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                ) : (
-                  <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <p className="font-semibold">{check.label}</p>
-                  <p className="text-sm text-gray-600">{check.details}</p>
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* Statistics */}
+      <div className="grid grid-cols-6 gap-3">
+        <div className="glass-card text-center">
+          <div className="text-2xl font-bold text-blue-700">{stats.total}</div>
+          <div className="text-xs text-gray-600">Total Batches</div>
         </div>
-
-        {!allChecksPassed && (
-          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
-            <div className="flex items-start space-x-2">
-              <AlertCircle className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-yellow-900">Cannot Release</p>
-                <p className="text-sm text-yellow-800">All checklist items must pass before release</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {batch.releaseInfo ? (
-          <div className="mt-6 p-4 bg-green-50 border border-green-300 rounded-lg">
-            <h4 className="font-semibold text-green-900 mb-2">Release Information</h4>
-            <div className="text-sm space-y-1">
-              <p><span className="font-semibold">Released By:</span> {batch.releaseInfo.releasedBy}</p>
-              <p><span className="font-semibold">Release Date:</span> {new Date(batch.releaseInfo.releasedAt).toLocaleString()}</p>
-              <p><span className="font-semibold">CoA Generated:</span> Yes</p>
-              <p><span className="font-semibold">Stability Study:</span> Initiated</p>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={performRelease}
-              disabled={!canRelease}
-              className={`px-6 py-3 rounded-lg font-semibold ${
-                canRelease 
-                  ? 'bg-green-600 text-white hover:bg-green-700' 
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              Release Batch for Distribution
-            </button>
-          </div>
-        )}
+        <div className="glass-card text-center">
+          <div className="text-2xl font-bold text-yellow-600">{stats.awaiting}</div>
+          <div className="text-xs text-gray-600">Awaiting Decision</div>
+        </div>
+        <div className="glass-card text-center">
+          <div className="text-2xl font-bold text-green-600">{stats.released}</div>
+          <div className="text-xs text-gray-600">Released</div>
+        </div>
+        <div className="glass-card text-center">
+          <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
+          <div className="text-xs text-gray-600">Rejected</div>
+        </div>
+        <div className="glass-card text-center">
+          <div className="text-2xl font-bold text-orange-600">{stats.quarantine}</div>
+          <div className="text-xs text-gray-600">Quarantine</div>
+        </div>
+        <div className="glass-card text-center">
+          <div className="text-2xl font-bold text-purple-600">{stats.withDeviations}</div>
+          <div className="text-xs text-gray-600">With Deviations</div>
+        </div>
       </div>
 
-      {/* Detailed Batch History */}
+      {/* Filters */}
       <div className="glass-card">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold flex items-center">
-            <ClipboardCheck className="w-5 h-5 mr-2" />
-            Batch Execution History
-          </h3>
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="text-sm text-blue-600 hover:text-blue-800"
+        <div className="flex items-center space-x-4">
+          <label className="text-sm font-semibold">Filter:</label>
+          <select 
+            className="border rounded px-3 py-1 text-sm"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
           >
-            {showHistory ? 'Hide' : 'Show'} Details
-          </button>
+            <option value="all">All Batches</option>
+            <option value="awaiting">Awaiting Decision</option>
+            <option value="released">Released</option>
+            <option value="rejected">Rejected</option>
+            <option value="quarantine">Quarantine</option>
+            <option value="investigating">Investigating</option>
+          </select>
         </div>
+      </div>
 
-        {showHistory && (
-          <div className="space-y-3">
-            {batch.history.map((step, idx) => {
-              const stepData = workflow?.steps.find(s => s.id === step.stepId);
-              const equipmentUsed = equipment?.find(e => e.id === stepData?.equipmentId);
-              const wsUsed = workStations?.find(ws => ws.id === stepData?.workStationId);
+      {/* Batches Table */}
+      <div className="glass-card">
+        <table className="w-full text-sm">
+          <thead className="bg-white/40">
+            <tr className="border-b">
+              <th className="text-left py-2 px-2 font-semibold text-xs">Batch ID</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Product</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Status</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Issues</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Completed</th>
+              <th className="text-left py-2 px-2 font-semibold text-xs">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredBatches.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="text-center py-8 text-gray-500">
+                  No batches requiring disposition
+                </td>
+              </tr>
+            ) : (
+              filteredBatches.map((batch, idx) => {
+                const formula = formulas.find(f => f.id === batch.formulaId);
+                const batchDeviations = deviations.filter(d => d.relatedBatch === batch.id);
+                const checks = getReleasabilityChecks(batch);
+                const canRelease = Object.values(checks).every(c => c.status) && 
+                                  (currentUser.role === 'QA' || currentUser.role === 'Admin');
+                const isExpanded = expandedBatch === batch.id;
 
-              return (
-                <div key={idx} className="border rounded-lg p-4 bg-white/40">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                        {idx + 1}
-                      </span>
-                      <h4 className="font-semibold">{step.stepName}</h4>
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        stepData?.type === 'qc' ? 'bg-purple-100 text-purple-800' :
-                        stepData?.type === 'dispensing' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
-                        {stepData?.type?.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div><span className="font-semibold">Value:</span> {step.value}</div>
-                    {step.lotNumber && <div><span className="font-semibold">Lot:</span> {step.lotNumber}</div>}
-                    <div><span className="font-semibold">Operator:</span> {step.completedBy}</div>
-                    <div><span className="font-semibold">Time:</span> {new Date(step.timestamp).toLocaleString()}</div>
-                    {equipmentUsed && (
-                      <>
-                        <div className="col-span-2"><span className="font-semibold">Equipment:</span> {equipmentUsed.name} ({equipmentUsed.class}/{equipmentUsed.subclass})</div>
-                        <div className="col-span-2"><span className="font-semibold">Serial:</span> {equipmentUsed.serialNumber}</div>
-                        {step.equipmentParameters && (
-                          <div className="col-span-2">
-                            <span className="font-semibold">Parameters:</span>
-                            <div className="text-xs bg-gray-50 p-2 rounded mt-1">
-                              {JSON.stringify(step.equipmentParameters, null, 2)}
-                            </div>
+                return (
+                  <React.Fragment key={batch.id}>
+                    <tr 
+                      className={`border-b hover:bg-white/40 cursor-pointer ${idx % 2 === 0 ? 'bg-white/20' : ''}`}
+                      onClick={() => setExpandedBatch(isExpanded ? null : batch.id)}
+                    >
+                      <td className="py-2 px-2 font-mono text-xs font-semibold">{batch.id}</td>
+                      <td className="py-2 px-2 text-xs">{formula?.productName}</td>
+                      <td className="py-2 px-2">
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          batch.status === 'released' ? 'bg-green-100 text-green-800' :
+                          batch.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                          batch.status === 'quarantine' ? 'bg-orange-100 text-orange-800' :
+                          batch.status === 'investigating' ? 'bg-purple-100 text-purple-800' :
+                          batch.status === 'under_review' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-blue-100 text-blue-800'
+                        }`}>
+                          {batch.status.toUpperCase().replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2">
+                        <div className="flex items-center space-x-1">
+                          {batch.hasDeviations && (
+                            <span className="px-1 py-0.5 bg-red-100 text-red-800 rounded text-xs font-semibold">
+                              {batchDeviations.length} DEV
+                            </span>
+                          )}
+                          {batch.qcResults?.some(qc => !qc.pass) && (
+                            <span className="px-1 py-0.5 bg-orange-100 text-orange-800 rounded text-xs font-semibold">
+                              QC FAIL
+                            </span>
+                          )}
+                          {!batch.hasDeviations && batch.qcResults?.every(qc => qc.pass) && (
+                            <span className="px-1 py-0.5 bg-green-100 text-green-800 rounded text-xs font-semibold">
+                              OK
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 px-2 text-xs">
+                        {batch.completedAt ? new Date(batch.completedAt).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td className="py-2 px-2">
+                        {!batch.disposition ? (
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!canRelease) {
+                                  alert('Cannot release: Requirements not met or insufficient permissions');
+                                  return;
+                                }
+                                handleDispositionAction(batch, 'release');
+                              }}
+                              disabled={!canRelease}
+                              className={`p-1 rounded ${
+                                canRelease 
+                                  ? 'hover:bg-green-100 text-green-600' 
+                                  : 'text-gray-400 cursor-not-allowed'
+                              }`}
+                              title="Release"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDispositionAction(batch, 'quarantine');
+                              }}
+                              className="p-1 hover:bg-yellow-100 rounded text-yellow-600"
+                              title="Quarantine"
+                            >
+                              <Clock className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDispositionAction(batch, 'investigate');
+                              }}
+                              className="p-1 hover:bg-blue-100 rounded text-blue-600"
+                              title="Investigate"
+                            >
+                              <AlertTriangle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDispositionAction(batch, 'reject');
+                              }}
+                              className="p-1 hover:bg-red-100 rounded text-red-600"
+                              title="Reject"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReworkBatchId(batch.id);
+                                setShowReworkModal(true);
+                              }}
+                              className="p-1 hover:bg-purple-100 rounded text-purple-600"
+                              title="Rework"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-500">
+                            {batch.disposition.decision.toUpperCase()}
                           </div>
                         )}
-                      </>
-                    )}
-                    {wsUsed && <div className="col-span-2"><span className="font-semibold">Work Station:</span> {wsUsed.name}</div>}
-                    {stepData?.instruction && (
-                      <div className="col-span-2">
-                        <span className="font-semibold">Instruction:</span>
-                        <p className="text-xs text-gray-600 mt-1">{stepData.instruction}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="mt-4 flex space-x-2">
-          <button
-            onClick={exportBatchHistory}
-            className="btn-secondary flex items-center space-x-2"
-          >
-            <Download className="w-4 h-4" />
-            <span>Export Full History</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Certificate of Analysis */}
-      {batch.releaseInfo?.certificateOfAnalysis && (
-        <div className="glass-card">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">Certificate of Analysis</h3>
-            <button
-              onClick={() => setShowCoA(!showCoA)}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              {showCoA ? 'Hide' : 'Show'} CoA
-            </button>
-          </div>
-
-          {showCoA && (
-            <>
-              <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                <div>
-                  <p className="font-semibold">Batch Number:</p>
-                  <p>{batch.releaseInfo.certificateOfAnalysis.batchNumber}</p>
-                </div>
-                <div>
-                  <p className="font-semibold">Product:</p>
-                  <p>{batch.releaseInfo.certificateOfAnalysis.product}</p>
-                </div>
-                <div>
-                  <p className="font-semibold">Article Number:</p>
-                  <p>{batch.releaseInfo.certificateOfAnalysis.articleNumber}</p>
-                </div>
-                <div>
-                  <p className="font-semibold">Formula Version:</p>
-                  <p>{batch.releaseInfo.certificateOfAnalysis.formulaVersion}</p>
-                </div>
-                <div>
-                  <p className="font-semibold">Manufacturing Date:</p>
-                  <p>{new Date(batch.releaseInfo.certificateOfAnalysis.manufacturingDate).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <p className="font-semibold">Expiry Date:</p>
-                  <p>{batch.releaseInfo.certificateOfAnalysis.expiryDate}</p>
-                </div>
-                <div>
-                  <p className="font-semibold">Quantity:</p>
-                  <p>{batch.releaseInfo.certificateOfAnalysis.quantity} {batch.releaseInfo.certificateOfAnalysis.unit}</p>
-                </div>
-                <div>
-                  <p className="font-semibold">Released By:</p>
-                  <p>{batch.releaseInfo.certificateOfAnalysis.releasedBy}</p>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <p className="font-semibold mb-2">QC Test Results:</p>
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="text-left p-2">Test</th>
-                      <th className="text-left p-2">Result</th>
-                      <th className="text-left p-2">Specification</th>
-                      <th className="text-left p-2">Status</th>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {batch.releaseInfo.certificateOfAnalysis.qcResults.map((qc, idx) => (
-                      <tr key={idx} className="border-t">
-                        <td className="p-2">{qc.test}</td>
-                        <td className="p-2">{qc.result} {qc.unit}</td>
-                        <td className="p-2">{qc.min} - {qc.max}</td>
-                        <td className="p-2">
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            qc.pass ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {qc.pass ? 'PASS' : 'FAIL'}
-                          </span>
+
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan="6" className="p-4 bg-gray-50">
+                          <div className="space-y-4">
+                            {/* Release Checklist */}
+                            <div>
+                              <h4 className="font-semibold mb-3">Release Checklist</h4>
+                              <div className="grid grid-cols-2 gap-2">
+                                {Object.entries(checks).map(([key, check]) => (
+                                  <div key={key} className={`p-2 rounded border text-xs ${
+                                    check.status ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'
+                                  }`}>
+                                    <div className="flex items-center space-x-2">
+                                      {check.status ? (
+                                        <CheckCircle className="w-3 h-3 text-green-600 flex-shrink-0" />
+                                      ) : (
+                                        <XCircle className="w-3 h-3 text-red-600 flex-shrink-0" />
+                                      )}
+                                      <div>
+                                        <p className="font-semibold">{check.label}</p>
+                                        <p className="text-gray-600">{check.details}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Deviations */}
+                            {batch.hasDeviations && batchDeviations.length > 0 && (
+                              <div className="p-3 bg-red-50 border border-red-300 rounded">
+                                <h4 className="font-semibold text-red-800 mb-2 flex items-center">
+                                  <AlertTriangle className="w-4 h-4 mr-1" />
+                                  Deviations ({batchDeviations.length})
+                                </h4>
+                                <div className="space-y-2">
+                                  {batchDeviations.map(dev => (
+                                    <div key={dev.id} className="text-xs bg-white p-2 rounded">
+                                      <div className="font-semibold">{dev.id}: {dev.title}</div>
+                                      <div className="text-gray-600">{dev.description}</div>
+                                      <div className="mt-1">
+                                        <span className={`px-2 py-0.5 rounded text-xs ${
+                                          dev.status === 'closed' ? 'bg-green-100 text-green-800' :
+                                          dev.status === 'open' ? 'bg-red-100 text-red-800' :
+                                          'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                          {dev.status.toUpperCase()}
+                                        </span>
+                                        </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* QC Results */}
+                            {batch.qcResults && batch.qcResults.length > 0 && (
+                              <div>
+                                <h4 className="font-semibold mb-2">QC Test Results</h4>
+                                <table className="w-full text-xs">
+                                  <thead className="bg-gray-100">
+                                    <tr>
+                                      <th className="text-left p-2">Test</th>
+                                      <th className="text-left p-2">Result</th>
+                                      <th className="text-left p-2">Specification</th>
+                                      <th className="text-left p-2">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {batch.qcResults.map((qc, idx) => (
+                                      <tr key={idx} className="border-t">
+                                        <td className="p-2">{qc.test}</td>
+                                        <td className="p-2">{qc.result} {qc.unit}</td>
+                                        <td className="p-2">{qc.min} - {qc.max}</td>
+                                        <td className="p-2">
+                                          <span className={`px-2 py-0.5 rounded text-xs ${
+                                            qc.pass ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                          }`}>
+                                            {qc.pass ? 'PASS' : 'FAIL'}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+
+                            {/* Disposition Info */}
+                            {batch.disposition && (
+                              <div className="p-3 bg-blue-50 border border-blue-300 rounded">
+                                <h4 className="font-semibold text-blue-800 mb-2">Disposition Information</h4>
+                                <div className="text-xs space-y-1">
+                                  <p><span className="font-semibold">Decision:</span> {batch.disposition.decision.toUpperCase()}</p>
+                                  <p><span className="font-semibold">Decided By:</span> {batch.disposition.decidedBy}</p>
+                                  <p><span className="font-semibold">Date:</span> {new Date(batch.disposition.decidedAt).toLocaleString()}</p>
+                                  <p><span className="font-semibold">Reason:</span> {batch.disposition.reason}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Release Info & CoA */}
+                            {batch.releaseInfo && (
+                              <div className="p-3 bg-green-50 border border-green-300 rounded">
+                                <div className="flex justify-between items-center mb-2">
+                                  <h4 className="font-semibold text-green-800">Certificate of Analysis</h4>
+                                  <button
+                                    onClick={() => exportCoAPDF(batch)}
+                                    className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 flex items-center space-x-1"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    <span>Download CoA</span>
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div><span className="font-semibold">Released By:</span> {batch.releaseInfo.releasedBy}</div>
+                                  <div><span className="font-semibold">Release Date:</span> {new Date(batch.releaseInfo.releasedAt).toLocaleString()}</div>
+                                  <div><span className="font-semibold">Quantity:</span> {batch.releaseInfo.certificateOfAnalysis.quantity} {batch.releaseInfo.certificateOfAnalysis.unit}</div>
+                                  <div><span className="font-semibold">Expiry Date:</span> {batch.releaseInfo.certificateOfAnalysis.expiryDate}</div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Rework History */}
+                            {batch.reworkInfo && (
+                              <div className="p-3 bg-purple-50 border border-purple-300 rounded">
+                                <h4 className="font-semibold text-purple-800 mb-2 flex items-center">
+                                  <RotateCcw className="w-4 h-4 mr-1" />
+                                  Rework History
+                                </h4>
+                                <div className="text-xs space-y-1">
+                                  <p><span className="font-semibold">Reworked By:</span> {batch.reworkInfo.reworkedBy}</p>
+                                  <p><span className="font-semibold">Date:</span> {new Date(batch.reworkInfo.reworkedAt).toLocaleString()}</p>
+                                  <p><span className="font-semibold">From Step:</span> {batch.reworkInfo.fromStep}</p>
+                                  <p><span className="font-semibold">Reason:</span> {batch.reworkInfo.reason}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Material Consumption */}
+                            {batch.materialConsumption && batch.materialConsumption.length > 0 && (
+                              <div>
+                                <h4 className="font-semibold mb-2 flex items-center">
+                                  <Package className="w-4 h-4 mr-1" />
+                                  Material Consumption
+                                </h4>
+                                <div className="space-y-1">
+                                  {batch.materialConsumption.map((mc, idx) => (
+                                    <div key={idx} className="flex justify-between text-xs p-2 bg-white rounded border">
+                                      <span className="font-semibold">{mc.materialArticle}</span>
+                                      <span>{mc.quantity} {mc.unit} (Lot: {mc.lotNumber})</span>
+                                      {mc.hasDeviation && (
+                                        <span className="text-red-600 font-semibold">⚠ DEVIATION</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Batch History Summary */}
+                            {batch.history && batch.history.length > 0 && (
+                              <div>
+                                <h4 className="font-semibold mb-2">Execution Summary</h4>
+                                <div className="text-xs space-y-1">
+                                  <p><span className="font-semibold">Started:</span> {new Date(batch.startedAt).toLocaleString()}</p>
+                                  <p><span className="font-semibold">Completed:</span> {batch.completedAt ? new Date(batch.completedAt).toLocaleString() : 'In progress'}</p>
+                                  <p><span className="font-semibold">Started By:</span> {batch.startedBy}</p>
+                                  <p><span className="font-semibold">Steps Completed:</span> {batch.history.length}/{workflows.find(w => w.id === batch.workflowId)?.steps?.length || 0}</p>
+                                  {batch.actualYield && (
+                                    <p><span className="font-semibold">Actual Yield:</span> {batch.actualYield} units ({batch.yieldReconciliation?.yieldPercentage?.toFixed(2)}%)</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+                    )}
+                  </React.Fragment>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
 
-          <div className="mt-4">
-            <button
-              onClick={exportCoAPDF}
-              className="btn-primary flex items-center space-x-2"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download CoA</span>
-            </button>
-          </div>
+      {/* Empty State */}
+      {dispositionBatches.length === 0 && (
+        <div className="glass-card text-center py-12">
+          <FileCheck className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-600 mb-2">No Batches for Disposition</h3>
+          <p className="text-gray-500">Completed batches will appear here for release decision</p>
         </div>
       )}
+
+      {/* Rework Modal */}
+      {showReworkModal && reworkBatchId && (
+        <ReworkModal batch={batches.find(b => b.id === reworkBatchId)} />
+      )}
+
+      {/* Help Section */}
+      <div className="glass-card bg-blue-50 border border-blue-200">
+        <div className="flex items-start space-x-3">
+          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-blue-900 mb-1">Batch Disposition Guidelines</p>
+            <ul className="text-blue-800 space-y-1 list-disc list-inside">
+              <li><strong>Release:</strong> All quality criteria must be met. Generates CoA and initiates stability study.</li>
+              <li><strong>Reject:</strong> Batch does not meet specifications and will be discarded.</li>
+              <li><strong>Quarantine:</strong> Hold for additional testing or analysis before final decision.</li>
+              <li><strong>Investigate:</strong> Requires investigation (mandatory for batches with deviations).</li>
+              <li><strong>Rework:</strong> Return batch to specific step to correct issues.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

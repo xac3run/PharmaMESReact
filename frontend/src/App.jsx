@@ -1066,12 +1066,15 @@ const [aprs, setAprs] = useState(initialAPRs);
             )}
            {activeTab === "batchRelease" && (
               <BatchRelease
-                batch={batches.find((b) => b.status === "completed")}
+                //batch={batches.find((b) => b.status === "completed")}
+                batches={batches}  // ← ПРАВИЛЬНО - передаем весь массив
+                setBatches={setBatches}  // ← ДОБАВЛЕНО
                 workflows={workflows}
                 formulas={formulas} // НОВЫЙ
                 equipment={equipment} // НОВЫЙ
                 workStations={workStations} // НОВЫЙ
                 deviations={deviations}
+                setDeviations={setDeviations}  // ← ДОБАВЛЕНО
                 currentUser={currentUser}
                 releaseBatch={releaseBatch}
                 showESignature={showESignature}

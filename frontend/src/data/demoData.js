@@ -829,3 +829,431 @@ export function initializeStabilityAndTraining() {
     trainingRecords: initialTrainingRecords
   };
 }
+
+// ============================================
+// BATCH RELEASE DEMO DATA
+// ============================================
+
+// Обновленные батчи с полными данными для BatchRelease
+export const batchReleaseDemoBatches = [
+  // ✅ Batch 1: Successfully completed - Ready for release
+  {
+    id: "B-2025-001",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 1000,
+    actualYield: 980,
+    status: "completed",
+    priority: "normal",
+    progress: 100,
+    currentStep: null,
+    currentStepIndex: 5,
+    hasDeviations: false,
+    history: [
+      {
+        stepId: 1,
+        stepName: "Dispense API",
+        value: "250.1g",
+        lotNumber: "LOT-2025-001",
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T09:00:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        signature: { user: "John Operator", timestamp: "2025-10-03T09:00:00Z", reason: "Step execution" }
+      },
+      {
+        stepId: 2,
+        stepName: "Dispense Excipient",
+        value: "200.0g",
+        lotNumber: "LOT-2025-002",
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T09:15:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        signature: { user: "John Operator", timestamp: "2025-10-03T09:15:00Z", reason: "Step execution" }
+      },
+      {
+        stepId: 3,
+        stepName: "QC - Weight Check",
+        value: "450.1g",
+        lotNumber: null,
+        completedBy: "Anna QA",
+        timestamp: "2025-10-03T09:30:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        signature: { user: "Anna QA", timestamp: "2025-10-03T09:30:00Z", reason: "QC verification" }
+      },
+      {
+        stepId: 4,
+        stepName: "Mixing",
+        value: "CONFIRMED",
+        lotNumber: null,
+        completedBy: "John Operator",
+        timestamp: "2025-10-03T10:00:00Z",
+        workStation: "Mixing Station 1",
+        equipmentUsed: "Mixer-01",
+        signature: { user: "John Operator", timestamp: "2025-10-03T10:00:00Z", reason: "Process completion" }
+      },
+      {
+        stepId: 5,
+        stepName: "QC - Homogeneity Test",
+        value: "98.5%",
+        lotNumber: null,
+        completedBy: "Anna QA",
+        timestamp: "2025-10-03T10:45:00Z",
+        workStation: "Mixing Station 1",
+        equipmentUsed: null,
+        signature: { user: "Anna QA", timestamp: "2025-10-03T10:45:00Z", reason: "Final QC" }
+      }
+    ],
+    materialConsumption: [
+      { stepId: 1, materialArticle: "MAT-001", quantity: 250.1, unit: "g", lotNumber: "LOT-2025-001", timestamp: "2025-10-03T09:00:00Z" },
+      { stepId: 2, materialArticle: "MAT-002", quantity: 200.0, unit: "g", lotNumber: "LOT-2025-002", timestamp: "2025-10-03T09:15:00Z" }
+    ],
+    qcResults: [
+      { test: "Weight Check", result: 450.1, unit: "g", min: 445, max: 455, pass: true },
+      { test: "Homogeneity", result: 98.5, unit: "%", min: 95, max: 100, pass: true }
+    ],
+    yieldReconciliation: {
+      actualYield: 980,
+      yieldPercentage: 98.0,
+      status: 'reconciled',
+      reconciledBy: 'Anna QA',
+      reconciledAt: '2025-10-05T11:00:00Z'
+    },
+    cleaningVerified: true,
+    createdDate: "2025-10-03",
+    createdBy: "System",
+    startedAt: "2025-10-03T08:30:00Z",
+    completedAt: "2025-10-03T11:00:00Z",
+    startedBy: "John Operator"
+  },
+
+  // ⚠️ Batch 2: Completed with deviation - Requires investigation
+  {
+    id: "B-2025-002",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 500,
+    actualYield: 490,
+    status: "under_review",
+    priority: "high",
+    progress: 100,
+    currentStep: null,
+    currentStepIndex: 5,
+    hasDeviations: true,
+    deviations: ["DEV-2025-001"],
+    history: [
+      {
+        stepId: 1,
+        stepName: "Dispense API",
+        value: "128.5g",
+        lotNumber: "LOT-2025-001",
+        completedBy: "John Operator",
+        timestamp: "2025-10-08T09:00:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        hasDeviation: true,
+        deviationDescription: "Weight deviation: Actual 128.5 g outside tolerance range 122.5-127.5 g. Target was 125.0 g.",
+        signature: { user: "John Operator", timestamp: "2025-10-08T09:00:00Z" }
+      },
+      {
+        stepId: 2,
+        stepName: "Dispense Excipient",
+        value: "100.0g",
+        lotNumber: "LOT-2025-002",
+        completedBy: "John Operator",
+        timestamp: "2025-10-08T09:15:00Z",
+        workStation: "Dispensing Station 1",
+        equipmentUsed: "Balance-01",
+        signature: { user: "John Operator", timestamp: "2025-10-08T09:15:00Z" }
+      },
+      {
+        stepId: 3,
+        stepName: "QC - Weight Check",
+        value: "228.5g",
+        completedBy: "Anna QA",
+        timestamp: "2025-10-08T09:30:00Z",
+        signature: { user: "Anna QA", timestamp: "2025-10-08T09:30:00Z" }
+      },
+      {
+        stepId: 4,
+        stepName: "Mixing",
+        value: "CONFIRMED",
+        completedBy: "John Operator",
+        timestamp: "2025-10-08T10:00:00Z",
+        signature: { user: "John Operator", timestamp: "2025-10-08T10:00:00Z" }
+      },
+      {
+        stepId: 5,
+        stepName: "QC - Homogeneity Test",
+        value: "96.2%",
+        completedBy: "Anna QA",
+        timestamp: "2025-10-08T10:30:00Z",
+        signature: { user: "Anna QA", timestamp: "2025-10-08T10:30:00Z" }
+      }
+    ],
+    materialConsumption: [
+      { stepId: 1, materialArticle: "MAT-001", quantity: 128.5, unit: "g", lotNumber: "LOT-2025-001", hasDeviation: true },
+      { stepId: 2, materialArticle: "MAT-002", quantity: 100.0, unit: "g", lotNumber: "LOT-2025-002" }
+    ],
+    qcResults: [
+      { test: "Weight Check", result: 228.5, unit: "g", min: 222.5, max: 227.5, pass: false },
+      { test: "Homogeneity", result: 96.2, unit: "%", min: 95, max: 100, pass: true }
+    ],
+    yieldReconciliation: {
+      actualYield: 490,
+      yieldPercentage: 98.0,
+      status: 'reconciled',
+      reconciledBy: 'Anna QA',
+      reconciledAt: '2025-10-08T11:00:00Z'
+    },
+    cleaningVerified: true,
+    createdDate: "2025-10-08",
+    createdBy: "System",
+    startedAt: "2025-10-08T08:30:00Z",
+    completedAt: "2025-10-08T11:00:00Z",
+    startedBy: "John Operator"
+  },
+
+  // ✅ Batch 3: Already RELEASED
+  {
+    id: "B-2025-003",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 1500,
+    actualYield: 1470,
+    status: "released",
+    priority: "normal",
+    progress: 100,
+    hasDeviations: false,
+    history: [
+      { stepId: 1, stepName: "Dispense API", value: "375.0g", completedBy: "John Operator", timestamp: "2025-10-01T09:00:00Z", signature: { user: "John Operator", timestamp: "2025-10-01T09:00:00Z" } },
+      { stepId: 2, stepName: "Dispense Excipient", value: "300.0g", completedBy: "John Operator", timestamp: "2025-10-01T09:15:00Z", signature: { user: "John Operator", timestamp: "2025-10-01T09:15:00Z" } },
+      { stepId: 3, stepName: "QC - Weight Check", value: "675.0g", completedBy: "Anna QA", timestamp: "2025-10-01T09:30:00Z", signature: { user: "Anna QA", timestamp: "2025-10-01T09:30:00Z" } },
+      { stepId: 4, stepName: "Mixing", value: "CONFIRMED", completedBy: "John Operator", timestamp: "2025-10-01T10:00:00Z", signature: { user: "John Operator", timestamp: "2025-10-01T10:00:00Z" } },
+      { stepId: 5, stepName: "QC - Homogeneity Test", value: "99.1%", completedBy: "Anna QA", timestamp: "2025-10-01T10:30:00Z", signature: { user: "Anna QA", timestamp: "2025-10-01T10:30:00Z" } }
+    ],
+    materialConsumption: [
+      { stepId: 1, materialArticle: "MAT-001", quantity: 375.0, unit: "g", lotNumber: "LOT-2025-001" },
+      { stepId: 2, materialArticle: "MAT-002", quantity: 300.0, unit: "g", lotNumber: "LOT-2025-002" }
+    ],
+    qcResults: [
+      { test: "Weight Check", result: 675.0, unit: "g", min: 667.5, max: 682.5, pass: true },
+      { test: "Homogeneity", result: 99.1, unit: "%", min: 95, max: 100, pass: true }
+    ],
+    yieldReconciliation: { actualYield: 1470, yieldPercentage: 98.0, status: 'reconciled', reconciledBy: 'Anna QA', reconciledAt: '2025-10-01T11:00:00Z' },
+    cleaningVerified: true,
+    disposition: {
+      decision: 'release',
+      reason: 'All quality criteria met, batch approved for distribution',
+      decidedBy: 'Anna QA',
+      decidedAt: '2025-10-02T09:00:00Z',
+      signature: { user: 'Anna QA', timestamp: '2025-10-02T09:00:00Z', reason: 'Batch release approval' }
+    },
+    releaseInfo: {
+      releasedBy: 'Anna QA',
+      releasedAt: '2025-10-02T09:00:00Z',
+      signature: { user: 'Anna QA', timestamp: '2025-10-02T09:00:00Z' },
+      certificateOfAnalysis: {
+        batchNumber: 'B-2025-003',
+        product: 'Tablet A',
+        articleNumber: 'ART-001',
+        formulaVersion: '1.0',
+        manufacturingDate: '2025-10-01T08:30:00Z',
+        expiryDate: '2027-10-01',
+        quantity: 1470,
+        unit: 'units',
+        qcResults: [
+          { test: "Weight Check", result: 675.0, unit: "g", min: 667.5, max: 682.5, pass: true },
+          { test: "Homogeneity", result: 99.1, unit: "%", min: 95, max: 100, pass: true }
+        ],
+        releaseDate: '2025-10-02T09:00:00Z',
+        releasedBy: 'Anna QA'
+      }
+    },
+    createdDate: "2025-10-01",
+    startedAt: "2025-10-01T08:30:00Z",
+    completedAt: "2025-10-01T11:00:00Z"
+  },
+
+  // ❌ Batch 4: REJECTED
+  {
+    id: "B-2025-004",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 800,
+    actualYield: 0,
+    status: "rejected",
+    priority: "low",
+    progress: 100,
+    hasDeviations: true,
+    deviations: ["DEV-2025-002"],
+    history: [
+      { stepId: 1, stepName: "Dispense API", value: "195.0g", completedBy: "John Operator", timestamp: "2025-09-28T09:00:00Z" },
+      { stepId: 2, stepName: "Dispense Excipient", value: "160.0g", completedBy: "John Operator", timestamp: "2025-09-28T09:15:00Z" },
+      { stepId: 3, stepName: "QC - Weight Check", value: "355.0g", completedBy: "Anna QA", timestamp: "2025-09-28T09:30:00Z" },
+      { stepId: 4, stepName: "Mixing", value: "CONFIRMED", completedBy: "John Operator", timestamp: "2025-09-28T10:00:00Z" },
+      { 
+        stepId: 5, 
+        stepName: "QC - Homogeneity Test", 
+        value: "88.5%", 
+        completedBy: "Anna QA", 
+        timestamp: "2025-09-28T10:30:00Z",
+        hasDeviation: true,
+        deviationDescription: "QC result deviation: Actual result 88.5 % outside specification 95.0-100.0 %."
+      }
+    ],
+    qcResults: [
+      { test: "Weight Check", result: 355.0, unit: "g", min: 356, max: 364, pass: false },
+      { test: "Homogeneity", result: 88.5, unit: "%", min: 95, max: 100, pass: false }
+    ],
+    yieldReconciliation: { actualYield: 0, yieldPercentage: 0, status: 'rejected' },
+    cleaningVerified: true,
+    disposition: {
+      decision: 'reject',
+      reason: 'Critical QC failure - homogeneity below specification. Product does not meet quality standards.',
+      decidedBy: 'Anna QA',
+      decidedAt: '2025-09-29T10:00:00Z',
+      signature: { user: 'Anna QA', timestamp: '2025-09-29T10:00:00Z', reason: 'Batch rejection due to quality failure' }
+    },
+    createdDate: "2025-09-28",
+    startedAt: "2025-09-28T08:30:00Z",
+    completedAt: "2025-09-28T11:00:00Z"
+  },
+
+  // 🔶 Batch 5: QUARANTINE
+  {
+    id: "B-2025-005",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 600,
+    actualYield: 590,
+    status: "quarantine",
+    priority: "normal",
+    progress: 100,
+    hasDeviations: false,
+    history: [
+      { stepId: 1, stepName: "Dispense API", value: "150.0g", completedBy: "John Operator", timestamp: "2025-10-10T09:00:00Z", signature: { user: "John Operator", timestamp: "2025-10-10T09:00:00Z" } },
+      { stepId: 2, stepName: "Dispense Excipient", value: "120.0g", completedBy: "John Operator", timestamp: "2025-10-10T09:15:00Z", signature: { user: "John Operator", timestamp: "2025-10-10T09:15:00Z" } },
+      { stepId: 3, stepName: "QC - Weight Check", value: "270.0g", completedBy: "Anna QA", timestamp: "2025-10-10T09:30:00Z", signature: { user: "Anna QA", timestamp: "2025-10-10T09:30:00Z" } },
+      { stepId: 4, stepName: "Mixing", value: "CONFIRMED", completedBy: "John Operator", timestamp: "2025-10-10T10:00:00Z", signature: { user: "John Operator", timestamp: "2025-10-10T10:00:00Z" } },
+      { stepId: 5, stepName: "QC - Homogeneity Test", value: "95.1%", completedBy: "Anna QA", timestamp: "2025-10-10T10:30:00Z", signature: { user: "Anna QA", timestamp: "2025-10-10T10:30:00Z" } }
+    ],
+    qcResults: [
+      { test: "Weight Check", result: 270.0, unit: "g", min: 267, max: 273, pass: true },
+      { test: "Homogeneity", result: 95.1, unit: "%", min: 95, max: 100, pass: true }
+    ],
+    yieldReconciliation: { actualYield: 590, yieldPercentage: 98.3, status: 'reconciled', reconciledBy: 'Anna QA', reconciledAt: '2025-10-10T11:00:00Z' },
+    cleaningVerified: true,
+    disposition: {
+      decision: 'quarantine',
+      reason: 'Additional microbiological testing required before release decision',
+      decidedBy: 'Anna QA',
+      decidedAt: '2025-10-11T09:00:00Z',
+      signature: { user: 'Anna QA', timestamp: '2025-10-11T09:00:00Z', reason: 'Quarantine for additional testing' }
+    },
+    createdDate: "2025-10-10",
+    startedAt: "2025-10-10T08:30:00Z",
+    completedAt: "2025-10-10T11:00:00Z"
+  },
+
+  // 🔍 Batch 6: INVESTIGATING
+  {
+    id: "B-2025-006",
+    formulaId: 1,
+    workflowId: 1,
+    targetQuantity: 700,
+    actualYield: 680,
+    status: "investigating",
+    priority: "high",
+    progress: 100,
+    hasDeviations: true,
+    deviations: ["DEV-2025-003"],
+    history: [
+      { stepId: 1, stepName: "Dispense API", value: "175.0g", completedBy: "John Operator", timestamp: "2025-10-12T09:00:00Z", signature: { user: "John Operator", timestamp: "2025-10-12T09:00:00Z" } },
+      { stepId: 2, stepName: "Dispense Excipient", value: "140.0g", completedBy: "John Operator", timestamp: "2025-10-12T09:15:00Z", signature: { user: "John Operator", timestamp: "2025-10-12T09:15:00Z" } },
+      { stepId: 3, stepName: "QC - Weight Check", value: "315.0g", completedBy: "Anna QA", timestamp: "2025-10-12T09:30:00Z", signature: { user: "Anna QA", timestamp: "2025-10-12T09:30:00Z" } },
+      { stepId: 4, stepName: "Mixing", value: "CONFIRMED", completedBy: "John Operator", timestamp: "2025-10-12T10:00:00Z", signature: { user: "John Operator", timestamp: "2025-10-12T10:00:00Z" } },
+      { 
+        stepId: 5, 
+        stepName: "QC - Homogeneity Test", 
+        value: "94.8%", 
+        completedBy: "Anna QA", 
+        timestamp: "2025-10-12T10:30:00Z",
+        hasDeviation: true,
+        deviationDescription: "QC result borderline: 94.8% just below minimum specification of 95.0%",
+        signature: { user: "Anna QA", timestamp: "2025-10-12T10:30:00Z" }
+      }
+    ],
+    qcResults: [
+      { test: "Weight Check", result: 315.0, unit: "g", min: 311.5, max: 318.5, pass: true },
+      { test: "Homogeneity", result: 94.8, unit: "%", min: 95, max: 100, pass: false }
+    ],
+    yieldReconciliation: { actualYield: 680, yieldPercentage: 97.1, status: 'reconciled', reconciledBy: 'Anna QA', reconciledAt: '2025-10-12T11:00:00Z' },
+    cleaningVerified: true,
+    disposition: {
+      decision: 'investigate',
+      reason: 'Borderline QC result requires investigation before final disposition decision',
+      decidedBy: 'Anna QA',
+      decidedAt: '2025-10-13T09:00:00Z',
+      signature: { user: 'Anna QA', timestamp: '2025-10-13T09:00:00Z', reason: 'Investigation initiated for borderline result' }
+    },
+    createdDate: "2025-10-12",
+    startedAt: "2025-10-12T08:30:00Z",
+    completedAt: "2025-10-12T11:00:00Z"
+  }
+];
+
+// Deviations для BatchRelease батчей
+export const batchReleaseDeviations = [
+  {
+    id: "DEV-2025-001",
+    title: "Weight Deviation in Dispensing - Batch B-2025-002",
+    description: "API dispensed quantity (128.5g) exceeded tolerance range. Target was 125.0g ± 2.5g.",
+    category: "process",
+    severity: "minor",
+    detectedBy: "John Operator",
+    detectedDate: "2025-10-08T09:00:00Z",
+    status: "open",
+    relatedBatch: "B-2025-002",
+    relatedStep: 1,
+    stepName: "Dispense API",
+    stepType: "dispensing",
+    relatedMaterial: "MAT-001",
+    actualValue: "128.5g",
+    expectedValue: "125.0g"
+  },
+  {
+    id: "DEV-2025-002",
+    title: "Critical QC Failure - Homogeneity Test Batch B-2025-004",
+    description: "Homogeneity test result 88.5% is significantly below specification of 95-100%.",
+    category: "quality",
+    severity: "major",
+    detectedBy: "Anna QA",
+    detectedDate: "2025-09-28T10:30:00Z",
+    status: "closed",
+    relatedBatch: "B-2025-004",
+    relatedStep: 5,
+    stepName: "QC - Homogeneity Test",
+    stepType: "qc",
+    actualValue: "88.5%",
+    expectedValue: "95-100%"
+  },
+  {
+    id: "DEV-2025-003",
+    title: "Borderline QC Result - Homogeneity 94.8% Batch B-2025-006",
+    description: "Homogeneity test result 94.8% is marginally below specification minimum of 95.0%.",
+    category: "quality",
+    severity: "minor",
+    detectedBy: "Anna QA",
+    detectedDate: "2025-10-12T10:30:00Z",
+    status: "investigating",
+    relatedBatch: "B-2025-006",
+    relatedStep: 5,
+    stepName: "QC - Homogeneity Test",
+    stepType: "qc",
+    actualValue: "94.8%",
+    expectedValue: "95-100%"
+  }
+];
