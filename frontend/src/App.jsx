@@ -40,7 +40,7 @@ import GenealogyTracker from "./components/GenealogyTracker";
 import SOPManagement from "./components/SOPManagement";
 import EnvironmentalMonitoring from "./components/EnvironmentalMonitoring";
 // 🆕 добавлено:
-import ProductDisposition from "./components/ProductDisposition";
+//import ProductDisposition from "./components/ProductDisposition";
 import InvestigationWorkflow from "./components/InvestigationWorkflow";
 
 import StabilityStudies from "./components/StabilityStudies";
@@ -68,7 +68,7 @@ import {
   initialComplaints,
   initialSOPs,
   initialEnvRecords,
-   initialDispositions,        // 🆕 добавлено
+  // initialDispositions,        // 🆕 добавлено
   initialInvestigations,       // 🆕 добавлено
   initialStabilityStudies,
   initialTrainingRecords,
@@ -114,7 +114,7 @@ export default function App() {
 
   // 🆕 добавлены состояния для новых вкладок
   // 🆕 Новые состояния для Product Disposition и Investigation Workflow
-const [dispositions, setDispositions] = useState(initialDispositions);
+//const [dispositions, setDispositions] = useState(initialDispositions);
 const [investigations, setInvestigations] = useState(initialInvestigations);
 
 const [stabilityStudies, setStabilityStudies] = useState(initialStabilityStudies);
@@ -197,7 +197,7 @@ const [aprs, setAprs] = useState(initialAPRs);
         equipmentLog: "Equipment Logbook",
         dataIntegrity: "Data Integrity",
         equipmentConfig: "Equipment Config",
-        productDisposition: "Product Disposition", // 🆕
+       // productDisposition: "Product Disposition", // 🆕
         investigationWorkflow: "Investigation Workflow" // 🆕
       },
       ru: {
@@ -230,7 +230,7 @@ const [aprs, setAprs] = useState(initialAPRs);
         equipmentLog: "Журнал оборудования",
         dataIntegrity: "Целостность данных",
         equipmentConfig: "Конфигурация оборудования",
-        productDisposition: "Решение о продукте", // 🆕
+        //productDisposition: "Решение о продукте", // 🆕
         investigationWorkflow: "Расследования" // 🆕
       }
     };
@@ -633,7 +633,7 @@ const [aprs, setAprs] = useState(initialAPRs);
         { id: "workflows", label: t("workflows"), icon: GitBranch },
         { id: "materials", label: t("materials"), icon: Package },
         // 🆕 добавлено:
-        { id: "productDisposition", label: t("productDisposition"), icon: FileCheck },
+       // { id: "productDisposition", label: t("productDisposition"), icon: FileCheck },
       ],
     },
     {
@@ -928,24 +928,7 @@ const [aprs, setAprs] = useState(initialAPRs);
                 language={language}
               />
             )}
-            {/* 🆕 Новая вкладка Product Disposition */}
-            {activeTab === "productDisposition" && (
-              <ProductDisposition
-                batches={batches}
-                setBatches={setBatches}
-                materials={materials}
-                setMaterials={setMaterials}
-                deviations={deviations}
-                dispositions={dispositions}                // 🆕
-                setDispositions={setDispositions}          // 🆕
-                currentUser={currentUser}
-                addAuditEntry={addAuditEntry}
-                showESignature={showESignature}
-                language={language}
-              />
-            )}
-
-            {/* 🆕 Новая вкладка Investigation Workflow */}
+           {/* 🆕 Новая вкладка Investigation Workflow */}
             {activeTab === "investigationWorkflow" && (
               <InvestigationWorkflow
                 investigations={investigations}

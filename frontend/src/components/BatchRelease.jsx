@@ -215,6 +215,112 @@ export default function BatchRelease({
     makeDisposition(batch.id, decision, reason);
   };
 
+  // Force Release - для Admin/Master с обоснованием
+  const handleForceRelease = (batch) => {
+    // Проверка прав
+    if (currentUser.role !== 'admin' && currentUser.role !== 'Master') {
+      alert('Only Admin or Master can force release batches');
+      return;
+    }
+
+    const checks = getReleasabilityChecks(batch);
+    const failedChecks = Object.entries(checks)
+      .filter(([key, check]) => !check.status)
+      .map(([key, check]) => check.label);
+
+    if (failedChecks.length === 0) {
+      alert('All checks passed. Use normal release instead.');
+      return;
+    }
+
+    const reason = prompt(
+      `⚠️ FORCE RELEASE - Admin/Master Override\n\n` +
+      `Failed checks:\n${failedChecks.map(c => `• ${c}`).join('\n')}\n\n` +
+      `Enter detailed justification for force release:`,
+      ''
+    );
+
+    if (!reason || reason.trim().length < 20) {
+      alert('Force release requires detailed justification (minimum 20 characters)');
+      return;
+    }
+
+    showESignature(
+      '⚠️ FORCE RELEASE - Admin Override',
+      `Force release batch ${batch.id} despite failed checks:\n${failedChecks.join(', ')}`,
+      (signature) => {
+        const formula = formulas.find(f => f.id === batch.formulaId);
+        const coaData = {
+          batchNumber: batch.id,
+          product: formula?.productName,
+          articleNumber: formula?.articleNumber,
+          formulaVersion: formula?.version,
+          manufacturingDate: batch.startedAt,
+          expiryDate: calculateExpiryDate(batch.startedAt, 24),
+          quantity: batch.actualYield || batch.targetQuantity,
+          unit: 'units',
+          qcResults: batch.qcResults || [],
+          releaseDate: signature.timestamp,
+          releasedBy: signature.user,
+          forceReleased: true,
+          failedChecks: failedChecks
+        };
+
+        const disposition = {
+          decision: 'release',
+          reason: `FORCE RELEASE by ${currentUser.role}: ${reason}`,
+          decidedBy: signature.user,
+          decidedAt: signature.timestamp,
+          signature,
+          forceRelease: true,
+          failedChecks: failedChecks
+        };
+
+        setBatches(prev => prev.map(b => 
+          b.id === batch.id ? {
+            ...b,
+            disposition,
+            status: 'released',
+            releaseInfo: {
+              releasedBy: signature.user,
+              releasedAt: signature.timestamp,
+              signature,
+              certificateOfAnalysis: coaData,
+              forceReleased: true
+            }
+          } : b
+        ));
+
+        // Create stability study
+        if (createStabilityStudy) {
+          const stabilityData = {
+            batchId: batch.id,
+            product: formula?.productName,
+            startDate: new Date().toISOString(),
+            conditions: [
+              { id: 1, name: '25°C/60%RH', type: 'long_term', temperature: 25, humidity: 60 },
+              { id: 2, name: '40°C/75%RH', type: 'accelerated', temperature: 40, humidity: 75 }
+            ],
+            duration: 24,
+            pullSchedule: [0, 3, 6, 12, 18, 24],
+            status: 'active',
+            initiatedBy: signature.user,
+            initiatedDate: signature.timestamp
+          };
+          createStabilityStudy(stabilityData);
+        }
+
+        addAuditEntry(
+          "⚠️ FORCE RELEASE - Admin Override",
+          `Batch ${batch.id} force released by ${signature.user} (${currentUser.role}). Failed checks: ${failedChecks.join(', ')}. Reason: ${reason}`,
+          batch.id
+        );
+
+        alert('✅ Batch force released successfully. This action has been logged in audit trail.');
+      }
+    );
+  };
+
   // Rework batch - return to specific step
   const handleRework = (batchId, stepIndex, reason) => {
     showESignature(
@@ -486,7 +592,7 @@ export default function BatchRelease({
                 const batchDeviations = deviations.filter(d => d.relatedBatch === batch.id);
                 const checks = getReleasabilityChecks(batch);
                 const canRelease = Object.values(checks).every(c => c.status) && 
-                                  (currentUser.role === 'QA' || currentUser.role === 'Admin');
+                                  (currentUser.role === 'QA' || currentUser.role === 'admin');
                 const isExpanded = expandedBatch === batch.id;
 
                 return (
@@ -594,6 +700,18 @@ export default function BatchRelease({
                             >
                               <RotateCcw className="w-4 h-4" />
                             </button>
+                            {(currentUser.role === 'admin' || currentUser.role === 'Master') && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleForceRelease(batch);
+                                }}
+                                className="p-1 hover:bg-orange-100 rounded text-orange-600"
+                                title="Force Release (Admin/Master Only)"
+                              >
+                                <Lock className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div className="text-xs text-gray-500">
@@ -704,11 +822,21 @@ export default function BatchRelease({
                               </div>
                             )}
 
-                            {/* Release Info & CoA */}
+                           {/* Release Info & CoA */}
                             {batch.releaseInfo && (
                               <div className="p-3 bg-green-50 border border-green-300 rounded">
                                 <div className="flex justify-between items-center mb-2">
-                                  <h4 className="font-semibold text-green-800">Certificate of Analysis</h4>
+                                  <div className="flex items-center space-x-2">
+                                    <h4 className="font-semibold text-green-800">Certificate of Analysis</h4>
+                                    {batch.releaseInfo.forceReleased && (
+                                      <div className="px-2 py-1 bg-orange-100 border border-orange-300 rounded flex items-center space-x-1">
+                                        <AlertTriangle className="w-3 h-3 text-orange-700" />
+                                        <span className="text-xs font-semibold text-orange-800">
+                                          ⚠️ FORCE RELEASED
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
                                   <button
                                     onClick={() => exportCoAPDF(batch)}
                                     className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 flex items-center space-x-1"
@@ -816,6 +944,7 @@ export default function BatchRelease({
               <li><strong>Quarantine:</strong> Hold for additional testing or analysis before final decision.</li>
               <li><strong>Investigate:</strong> Requires investigation (mandatory for batches with deviations).</li>
               <li><strong>Rework:</strong> Return batch to specific step to correct issues.</li>
+              <li><strong>Force Release (Admin/Master):</strong> Override failed checks with detailed justification and electronic signature.</li>
             </ul>
           </div>
         </div>
