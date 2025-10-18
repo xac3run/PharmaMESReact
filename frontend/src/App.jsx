@@ -839,6 +839,10 @@ const [aprs, setAprs] = useState(initialAPRs);
                 formulas={formulas}
                 workflows={workflows}
                 auditTrail={auditTrail}
+                equipment={equipment}        // ← добавить
+                materials={materials}        // ← добавить
+                deviations={deviations}      // ← добавить
+                capas={capas}                // ← добавить
               />
             )}
             {activeTab === "batches" && (
